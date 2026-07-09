@@ -149,6 +149,72 @@ h1 {
   border-color: #d9b3ff;
 }
 
+.meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.class-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #b9aed6;
+}
+
+.class-picker select {
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #f4e9ff;
+  background: #1a1723;
+  border: 1px solid #3a3150;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+}
+
+.class-picker select:focus {
+  outline: none;
+  border-color: #d9b3ff;
+}
+
+.level {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  color: #b9aed6;
+}
+
+.level span {
+  color: #ffd479;
+  font-weight: 700;
+}
+
+.mini-btn {
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.4rem 0.8rem;
+  color: #1a1723;
+  background: #d9b3ff;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+
+.mini-btn:hover {
+  background: #e6ccff;
+}
+
+.mini-btn:active {
+  transform: scale(0.95);
+}
+
 .stats {
   display: flex;
   flex-direction: column;

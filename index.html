@@ -30,6 +30,18 @@
         placeholder="Adventurer name"
         autocomplete="off"
       >
+      <div class="meta">
+        <label class="class-picker">
+          Class
+          <select id="class">
+            <!-- class options are populated in game.js -->
+          </select>
+        </label>
+        <div class="level">
+          Lv <span id="level">1</span>
+          <button id="levelUp" type="button" class="mini-btn">Level +</button>
+        </div>
+      </div>
       <div class="stats" id="stats">
         <!-- stat rows are rendered here -->
       </div>
