@@ -10,11 +10,32 @@
   <main class="game">
     <h1>Guild Sim</h1>
 
-    <div class="counter">
-      Adventurers: <span id="count">1</span> / <span id="max">1</span>
+    <div class="topbar">
+      <div class="resource">Gold: <span id="gold">0</span></div>
+      <div class="resource">Adventurers: <span id="count">0</span> / <span id="max">0</span></div>
     </div>
 
-    <button id="hire" type="button">Hire Newbie</button>
+    <section class="roster" id="roster" aria-label="Roster">
+      <!-- adventurer boxes are rendered here -->
+    </section>
+
+    <button id="hire" type="button" class="hire-btn">Hire Newbie (1000g)</button>
+
+    <section class="statsheet" id="statsheet" aria-label="Stat sheet">
+      <input
+        id="name"
+        class="name-box"
+        type="text"
+        maxlength="20"
+        placeholder="Adventurer name"
+        autocomplete="off"
+      >
+      <div class="stats" id="stats">
+        <!-- stat rows are rendered here -->
+      </div>
+    </section>
+
+    <p class="empty-hint" id="emptyHint">No adventurer selected — hire one to get started.</p>
   </main>
 
   <script src="game.js"></script>
