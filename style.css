@@ -1,0 +1,70 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #1a1723;
+  color: #ece7f5;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 2rem;
+}
+
+h1 {
+  font-size: 2.25rem;
+  letter-spacing: 0.05em;
+  color: #d9b3ff;
+}
+
+.counter {
+  font-size: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: #262036;
+  border-radius: 0.75rem;
+  border: 1px solid #3a3150;
+}
+
+#count,
+#max {
+  font-weight: 700;
+  color: #ffd479;
+}
+
+button {
+  font-size: 1.15rem;
+  font-weight: 600;
+  padding: 0.85rem 2rem;
+  color: #1a1723;
+  background: #ffd479;
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+
+button:hover {
+  background: #ffde96;
+}
+
+button:active {
+  transform: scale(0.96);
+}
+
+button:disabled {
+  background: #4a4360;
+  color: #8a819e;
+  cursor: not-allowed;
+}
