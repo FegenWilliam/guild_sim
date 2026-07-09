@@ -42,16 +42,25 @@ const PERCENT_STATS = new Set(["CRIT", "CRIT DMG", "EVA"]);
 //   - base: overrides to DEFAULT_BASE, so each class opens with its own
 //     derived statline before any primaries are applied.
 const CLASS_NAMES = ["Warrior", "Ranger", "Mage"];
+
+// Starting primaries: everyone opens with STARTING_PRIMARY in each, except
+// their class's `main` stat, which starts at STARTING_MAIN.
+const STARTING_PRIMARY = 2;
+const STARTING_MAIN = 5;
+
 const CLASSES = {
   Warrior: {
+    main: "STR",
     perLevel: { STR: 3, INT: 1, DEX: 1 },
     base: { HP: 100, DEF: 10 },
   },
   Ranger: {
+    main: "DEX",
     perLevel: { DEX: 3, INT: 1, STR: 1 },
     base: { CRIT: 3, EVA: 2 },
   },
   Mage: {
+    main: "INT",
     perLevel: { INT: 3, DEX: 1, STR: 1 },
     base: { MP: 100, ATK: 4, MATK: 10 },
   },
@@ -109,12 +118,14 @@ function getSelected() {
   return state.adventurers.find((a) => a.id === state.selectedId) || null;
 }
 
-// Primary stat totals: fixed per-level class allocation times the level.
+// Primary stat totals: the class's starting allocation plus its per-level
+// gains for every level past the first.
 function primaryStats(adventurer) {
-  const gain = CLASSES[adventurer.className].perLevel;
+  const cls = CLASSES[adventurer.className];
   const result = {};
   for (const stat of PRIMARY_STATS) {
-    result[stat] = (gain[stat] || 0) * adventurer.level;
+    const start = stat === cls.main ? STARTING_MAIN : STARTING_PRIMARY;
+    result[stat] = start + (cls.perLevel[stat] || 0) * (adventurer.level - 1);
   }
   return result;
 }
