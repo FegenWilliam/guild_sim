@@ -1,48 +1,54 @@
 // Guild Sim — prototype
-// Player manages a roster of adventurers. Each adventurer has a class, a
-// level, and a base statsheet. Click an adventurer box to select them; the
-// stat page, name box, class picker and level reflect the selected adventurer.
+// Player manages a roster of adventurers. Each adventurer has a class (chosen
+// once, at hire time, and fixed forever), a level, and XP toward the next
+// level. Click an adventurer box to select them; the stat page reflects the
+// selected adventurer.
 
 const HIRE_COST = 1000;
 const BASE_MAX_ADVENTURERS = 3;
 
-// The stats every adventurer starts with at level 1. Order = display order.
+// --- Stats ---------------------------------------------------------------
+// Primary stats (STR / DEX / INT) are the drivers. A class grants a fixed
+// amount of each primary per level (see CLASSES). Every derived stat below is
+// computed from the primaries, so the whole statsheet moves when you level.
+const PRIMARY_STATS = ["STR", "DEX", "INT"];
+
+// Base derived stats — what every adventurer would have with zero primaries.
 const BASE_STATS = {
   HP: 100,
   MP: 30,
   ATK: 12,
+  MATK: 5,
   DEF: 8,
   CRIT: 5,         // %
   "CRIT DMG": 150, // %
   EVA: 3,          // %
 };
 
+// Display order for the statsheet: primaries first, then derived.
+const DISPLAY_ORDER = [
+  "STR", "DEX", "INT",
+  "HP", "MP", "ATK", "MATK", "DEF", "CRIT", "CRIT DMG", "EVA",
+];
+
 // Stats shown as percentages get a trailing "%" in the stat sheet.
 const PERCENT_STATS = new Set(["CRIT", "CRIT DMG", "EVA"]);
 
 // --- Classes -------------------------------------------------------------
-// For now a class is mostly a label, plus a per-level stat-bonus table that
-// scaffolds progression. An adventurer's effective stats are:
-//     BASE_STATS[stat] + perLevel[stat] * (level - 1)
-// so a fresh level-1 adventurer always equals BASE_STATS regardless of class.
-//
-// TODO: the perLevel numbers below are PLACEHOLDERS for balancing — tune them
-// (or replace the whole flat-per-level model with growth curves / stat points)
-// once class design is decided. Adding a new class is just another entry here.
-const CLASS_NAMES = ["Warrior", "Mage", "Ranger"];
+// A class is a fixed per-level allocation of primary stats. A level-N
+// adventurer has `perLevel[stat] * N` of each primary, so the class shapes
+// which derived stats grow fastest.
+const CLASS_NAMES = ["Warrior", "Ranger", "Mage"];
 const CLASSES = {
-  Warrior: {
-    perLevel: { HP: 12, MP: 1, ATK: 3, DEF: 3, CRIT: 0, "CRIT DMG": 0, EVA: 0 },
-  },
-  Mage: {
-    perLevel: { HP: 5, MP: 8, ATK: 1, DEF: 1, CRIT: 1, "CRIT DMG": 2, EVA: 0 },
-  },
-  Ranger: {
-    perLevel: { HP: 8, MP: 3, ATK: 2, DEF: 2, CRIT: 2, "CRIT DMG": 1, EVA: 2 },
-  },
+  Warrior: { perLevel: { STR: 3, INT: 1, DEX: 1 } },
+  Ranger:  { perLevel: { DEX: 3, INT: 1, STR: 1 } },
+  Mage:    { perLevel: { INT: 3, DEX: 1, STR: 1 } },
 };
 
-const DEFAULT_CLASS = "Warrior";
+// XP required to advance from `level` to `level + 1`.
+function xpToNext(level) {
+  return level * 100;
+}
 
 const state = {
   gold: 0,
@@ -63,18 +69,22 @@ const statsheetEl = document.getElementById("statsheet");
 const nameEl = document.getElementById("name");
 const classEl = document.getElementById("class");
 const levelEl = document.getElementById("level");
-const levelUpBtn = document.getElementById("levelUp");
+const xpFillEl = document.getElementById("xpFill");
+const xpTextEl = document.getElementById("xpText");
 const statsEl = document.getElementById("stats");
 const emptyHintEl = document.getElementById("emptyHint");
+const classModalEl = document.getElementById("classModal");
+const classChoicesEl = document.getElementById("classChoices");
 
 // --- Model ---------------------------------------------------------------
 
-function createAdventurer() {
+function createAdventurer(className) {
   return {
     id: state.nextId++,
     name: "Adventurer",
-    className: DEFAULT_CLASS,
+    className,
     level: 1,
+    xp: 0,
   };
 }
 
@@ -82,26 +92,74 @@ function getSelected() {
   return state.adventurers.find((a) => a.id === state.selectedId) || null;
 }
 
-// Effective stats after applying the adventurer's class/level bonuses.
-function effectiveStats(adventurer) {
-  const bonus = CLASSES[adventurer.className].perLevel;
-  const levelsGained = adventurer.level - 1;
+// Primary stat totals: fixed per-level class allocation times the level.
+function primaryStats(adventurer) {
+  const gain = CLASSES[adventurer.className].perLevel;
   const result = {};
-  for (const [stat, base] of Object.entries(BASE_STATS)) {
-    result[stat] = base + (bonus[stat] || 0) * levelsGained;
+  for (const stat of PRIMARY_STATS) {
+    result[stat] = (gain[stat] || 0) * adventurer.level;
   }
   return result;
+}
+
+// Full statsheet: primaries plus every derived stat computed from them.
+//
+//   STR = +5 Max HP, +2 DEF, +4 ATK          | every 5: +5% CRIT DMG
+//   DEX = +4 DEF, +10 Max MP, +0.05% CRIT    | every 5: +0.5% EVA
+//   INT = +25 Max MP, +4 MATK, +1 ATK        | every 5: +2% Max MP (additive)
+function effectiveStats(adventurer) {
+  const p = primaryStats(adventurer);
+  const b = BASE_STATS;
+
+  let hp = b.HP + p.STR * 5;
+  let mp = b.MP + p.DEX * 10 + p.INT * 25;
+  const atk = b.ATK + p.STR * 4 + p.INT * 1;
+  const matk = b.MATK + p.INT * 4;
+  const def = b.DEF + p.STR * 2 + p.DEX * 4;
+  const crit = b.CRIT + p.DEX * 0.05;
+  const critDmg = b["CRIT DMG"] + Math.floor(p.STR / 5) * 5;
+  const eva = b.EVA + Math.floor(p.DEX / 5) * 0.5;
+
+  // INT grants +2% Max MP per 5 points, additive, applied to the MP pool.
+  const mpPercent = Math.floor(p.INT / 5) * 2;
+  mp = Math.round(mp * (1 + mpPercent / 100));
+
+  return {
+    STR: p.STR,
+    DEX: p.DEX,
+    INT: p.INT,
+    HP: hp,
+    MP: mp,
+    ATK: atk,
+    MATK: matk,
+    DEF: def,
+    CRIT: crit,
+    "CRIT DMG": critDmg,
+    EVA: eva,
+  };
+}
+
+// Grant XP and level up as thresholds are crossed. No XP source is wired up
+// yet — leveling will come later — but the mechanics are ready.
+function gainXP(adventurer, amount) {
+  adventurer.xp += amount;
+  while (adventurer.xp >= xpToNext(adventurer.level)) {
+    adventurer.xp -= xpToNext(adventurer.level);
+    adventurer.level += 1;
+  }
 }
 
 function hireNewbie() {
   if (state.adventurers.length >= state.maxAdventurers) return;
   if (state.gold < HIRE_COST) return;
 
-  state.gold -= HIRE_COST;
-  const adventurer = createAdventurer();
-  state.adventurers.push(adventurer);
-  state.selectedId = adventurer.id;
-  render();
+  openClassPicker((className) => {
+    state.gold -= HIRE_COST;
+    const adventurer = createAdventurer(className);
+    state.adventurers.push(adventurer);
+    state.selectedId = adventurer.id;
+    render();
+  }, { cancelable: true });
 }
 
 function selectAdventurer(id) {
@@ -119,24 +177,55 @@ function renameSelected(newName) {
   if (box) box.textContent = displayName(selected);
 }
 
-function setSelectedClass(className) {
-  const selected = getSelected();
-  if (!selected || !CLASSES[className]) return;
-  selected.className = className;
-  render();
-}
-
-// TODO: leveling is free/instant for now. Later gate it behind XP or a gold
-// training cost, and probably move it out of the stat sheet.
-function levelUpSelected() {
-  const selected = getSelected();
-  if (!selected) return;
-  selected.level += 1;
-  render();
-}
-
 function displayName(adventurer) {
   return adventurer.name.trim() || "Adventurer";
+}
+
+// --- Class picker modal --------------------------------------------------
+
+let pendingChoice = null;
+
+function openClassPicker(onChoose, { cancelable = false } = {}) {
+  pendingChoice = onChoose;
+  classModalEl.classList.remove("hidden");
+  classModalEl.dataset.cancelable = cancelable ? "true" : "false";
+}
+
+function closeClassPicker() {
+  pendingChoice = null;
+  classModalEl.classList.add("hidden");
+}
+
+function chooseClass(className) {
+  const onChoose = pendingChoice;
+  closeClassPicker();
+  if (onChoose) onChoose(className);
+}
+
+function renderClassChoices() {
+  classChoicesEl.innerHTML = "";
+  CLASS_NAMES.forEach((name) => {
+    const gain = CLASSES[name].perLevel;
+    const focus = PRIMARY_STATS
+      .map((stat) => `+${gain[stat] || 0} ${stat}`)
+      .join(" / ");
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "class-choice";
+
+    const title = document.createElement("span");
+    title.className = "class-choice-name";
+    title.textContent = name;
+
+    const sub = document.createElement("span");
+    sub.className = "class-choice-focus";
+    sub.textContent = `${focus} per level`;
+
+    btn.append(title, sub);
+    btn.addEventListener("click", () => chooseClass(name));
+    classChoicesEl.appendChild(btn);
+  });
 }
 
 // --- Rendering -----------------------------------------------------------
@@ -157,6 +246,14 @@ function renderRoster() {
   });
 }
 
+function formatValue(label, value) {
+  if (PERCENT_STATS.has(label)) {
+    // Trim to at most 2 decimals, dropping trailing zeros (e.g. 5.15, 3.5, 5).
+    return `${Number(value.toFixed(2))}%`;
+  }
+  return value;
+}
+
 function renderStatsheet() {
   const selected = getSelected();
 
@@ -174,12 +271,17 @@ function renderStatsheet() {
   if (nameEl.value !== selected.name) {
     nameEl.value = selected.name;
   }
-  classEl.value = selected.className;
+  classEl.textContent = selected.className;
   levelEl.textContent = selected.level;
+
+  const needed = xpToNext(selected.level);
+  const pct = Math.max(0, Math.min(100, (selected.xp / needed) * 100));
+  xpFillEl.style.width = `${pct}%`;
+  xpTextEl.textContent = `${selected.xp} / ${needed} XP`;
 
   statsEl.innerHTML = "";
   const stats = effectiveStats(selected);
-  Object.entries(stats).forEach(([label, value]) => {
+  DISPLAY_ORDER.forEach((label) => {
     const row = document.createElement("div");
     row.className = "stat-row";
 
@@ -189,7 +291,7 @@ function renderStatsheet() {
 
     const valueSpan = document.createElement("span");
     valueSpan.className = "stat-value";
-    valueSpan.textContent = PERCENT_STATS.has(label) ? `${value}%` : value;
+    valueSpan.textContent = formatValue(label, stats[label]);
 
     row.append(nameSpan, valueSpan);
     statsEl.appendChild(row);
@@ -211,30 +313,38 @@ function render() {
 
 // --- Setup ---------------------------------------------------------------
 
-function populateClassPicker() {
-  classEl.innerHTML = "";
-  CLASS_NAMES.forEach((name) => {
-    const option = document.createElement("option");
-    option.value = name;
-    option.textContent = name;
-    classEl.appendChild(option);
-  });
-}
-
 function init() {
-  populateClassPicker();
-
-  // Player starts broke but with one free newbie already on the roster.
-  const starter = createAdventurer();
-  state.adventurers.push(starter);
-  state.selectedId = starter.id;
+  renderClassChoices();
 
   hireBtn.addEventListener("click", hireNewbie);
   nameEl.addEventListener("input", (e) => renameSelected(e.target.value));
-  classEl.addEventListener("change", (e) => setSelectedClass(e.target.value));
-  levelUpBtn.addEventListener("click", levelUpSelected);
+
+  // Allow cancelling a hire (but not the mandatory first-newbie pick) by
+  // clicking the backdrop or pressing Escape.
+  classModalEl.addEventListener("click", (e) => {
+    if (e.target === classModalEl && classModalEl.dataset.cancelable === "true") {
+      closeClassPicker();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (
+      e.key === "Escape" &&
+      !classModalEl.classList.contains("hidden") &&
+      classModalEl.dataset.cancelable === "true"
+    ) {
+      closeClassPicker();
+    }
+  });
 
   render();
+
+  // Player starts broke, and must choose a class for their first free newbie.
+  openClassPicker((className) => {
+    const starter = createAdventurer(className);
+    state.adventurers.push(starter);
+    state.selectedId = starter.id;
+    render();
+  }, { cancelable: false });
 }
 
 init();
