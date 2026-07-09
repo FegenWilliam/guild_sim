@@ -13,16 +13,17 @@ const BASE_MAX_ADVENTURERS = 3;
 // computed from the primaries, so the whole statsheet moves when you level.
 const PRIMARY_STATS = ["STR", "DEX", "INT"];
 
-// Base derived stats — what every adventurer would have with zero primaries.
-const BASE_STATS = {
-  HP: 100,
-  MP: 30,
-  ATK: 12,
-  MATK: 5,
-  DEF: 8,
-  CRIT: 5,         // %
-  "CRIT DMG": 150, // %
-  EVA: 3,          // %
+// Base derived stats — what an adventurer has with zero primaries. Each class
+// starts from these defaults and overrides a few of them (see CLASSES.base).
+const DEFAULT_BASE = {
+  HP: 50,
+  MP: 25,
+  ATK: 10,
+  MATK: 4,
+  DEF: 5,
+  CRIT: 1,         // %
+  "CRIT DMG": 120, // %
+  EVA: 0,          // %
 };
 
 // Display order for the statsheet: primaries first, then derived.
@@ -35,15 +36,31 @@ const DISPLAY_ORDER = [
 const PERCENT_STATS = new Set(["CRIT", "CRIT DMG", "EVA"]);
 
 // --- Classes -------------------------------------------------------------
-// A class is a fixed per-level allocation of primary stats. A level-N
-// adventurer has `perLevel[stat] * N` of each primary, so the class shapes
-// which derived stats grow fastest.
+// A class defines two things:
+//   - perLevel: a fixed allocation of primary stats gained each level. A
+//     level-N adventurer has `perLevel[stat] * N` of each primary.
+//   - base: overrides to DEFAULT_BASE, so each class opens with its own
+//     derived statline before any primaries are applied.
 const CLASS_NAMES = ["Warrior", "Ranger", "Mage"];
 const CLASSES = {
-  Warrior: { perLevel: { STR: 3, INT: 1, DEX: 1 } },
-  Ranger:  { perLevel: { DEX: 3, INT: 1, STR: 1 } },
-  Mage:    { perLevel: { INT: 3, DEX: 1, STR: 1 } },
+  Warrior: {
+    perLevel: { STR: 3, INT: 1, DEX: 1 },
+    base: { HP: 100, DEF: 10 },
+  },
+  Ranger: {
+    perLevel: { DEX: 3, INT: 1, STR: 1 },
+    base: { CRIT: 3, EVA: 2 },
+  },
+  Mage: {
+    perLevel: { INT: 3, DEX: 1, STR: 1 },
+    base: { MP: 100, ATK: 4, MATK: 10 },
+  },
 };
+
+// Resolved base derived stats for a class: defaults with its overrides applied.
+function classBase(className) {
+  return { ...DEFAULT_BASE, ...CLASSES[className].base };
+}
 
 // XP required to advance from `level` to `level + 1`.
 function xpToNext(level) {
@@ -109,7 +126,7 @@ function primaryStats(adventurer) {
 //   INT = +25 Max MP, +4 MATK, +1 ATK        | every 5: +2% Max MP (additive)
 function effectiveStats(adventurer) {
   const p = primaryStats(adventurer);
-  const b = BASE_STATS;
+  const b = classBase(adventurer.className);
 
   let hp = b.HP + p.STR * 5;
   let mp = b.MP + p.DEX * 10 + p.INT * 25;
