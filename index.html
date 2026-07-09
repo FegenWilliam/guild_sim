@@ -31,16 +31,12 @@
         autocomplete="off"
       >
       <div class="meta">
-        <label class="class-picker">
-          Class
-          <select id="class">
-            <!-- class options are populated in game.js -->
-          </select>
-        </label>
-        <div class="level">
-          Lv <span id="level">1</span>
-          <button id="levelUp" type="button" class="mini-btn">Level +</button>
-        </div>
+        <div class="class-label">Class: <span id="class">—</span></div>
+        <div class="level">Lv <span id="level">1</span></div>
+      </div>
+      <div class="xpbar" aria-label="Experience">
+        <div class="xpbar-fill" id="xpFill"></div>
+        <span class="xpbar-text" id="xpText">0 / 100 XP</span>
       </div>
       <div class="stats" id="stats">
         <!-- stat rows are rendered here -->
@@ -49,6 +45,17 @@
 
     <p class="empty-hint" id="emptyHint">No adventurer selected — hire one to get started.</p>
   </main>
+
+  <!-- Class picker: shown on first launch and every hire. Choice is permanent. -->
+  <div class="modal-overlay hidden" id="classModal" role="dialog" aria-modal="true" aria-label="Choose a class">
+    <div class="modal">
+      <h2 id="classModalTitle">Choose a Class</h2>
+      <p class="modal-sub">Pick a class for your newbie. This choice is permanent.</p>
+      <div class="class-choices" id="classChoices">
+        <!-- class buttons are rendered here -->
+      </div>
+    </div>
+  </div>
 
   <script src="game.js"></script>
 </body>
