@@ -105,6 +105,24 @@
         </div>
         <button id="enemyCopy" type="button" class="copy-btn">Copy name &amp; stats</button>
       </div>
+
+      <!-- Battle screen: the autobattler plays out here after Enter. -->
+      <div class="battle hidden" id="battleScreen">
+        <button id="battleBack" type="button" class="back-btn">← Leave</button>
+        <h2 id="battleTitle">Battle</h2>
+        <p class="battle-result hidden" id="battleResult"></p>
+        <div class="battle-field">
+          <div class="battle-column">
+            <h3 class="battle-side-label">Party</h3>
+            <div class="battle-side" id="battleParty"></div>
+          </div>
+          <div class="battle-column">
+            <h3 class="battle-side-label">Enemies</h3>
+            <div class="battle-side" id="battleEnemies"></div>
+          </div>
+        </div>
+        <div class="battle-log" id="battleLog" aria-label="Battle log"></div>
+      </div>
     </section>
   </main>
 

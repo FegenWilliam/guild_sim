@@ -192,6 +192,207 @@ function getDungeon(id) {
   return DUNGEONS.find((d) => d.id === id) || null;
 }
 
+// --- Battle --------------------------------------------------------------
+// The autobattler is a turn-based stat check. A round is: every adventurer
+// attacks once, in roster order, then every enemy attacks once, in order.
+// Rounds repeat until one side has no fighters left.
+//
+// Combat math:
+//   - 1 ATK = 1 damage. DEF negates 0.5 damage per point (so 2 DEF cancels
+//     1 ATK). Minimum damage dealt is 1 — the only way to take 0 is to evade.
+//   - MATK ignores DEF entirely. A Mage's basic attack deals 50% of its MATK
+//     (Mages come into their own once skills exist).
+//   - CRIT% is the chance to crit; a crit multiplies damage by CRIT DMG%.
+//   - EVA% is the defender's chance to dodge the hit outright (0 damage).
+//
+// Adventurers never die: an adventurer fights until it hits 1 HP, then it
+// bows out for the rest of the battle. Enemies fight until 0 HP.
+const BATTLE_STEP_MS = 650; // pacing between attacks during playback
+
+let battle = null;      // active battle state, or null
+let battleTimer = null; // interval handle for playback
+
+function roll(percent) {
+  return Math.random() * 100 < percent;
+}
+
+// Turn an adventurer into a battle combatant. Party members retreat at 1 HP.
+function partyCombatant(adventurer) {
+  const s = effectiveStats(adventurer);
+  return {
+    name: displayName(adventurer),
+    side: "party",
+    hp: s.HP,
+    maxHp: s.HP,
+    atk: s.ATK,
+    matk: s.MATK,
+    def: s.DEF,
+    crit: s.CRIT,
+    critDmg: s["CRIT DMG"],
+    eva: s.EVA,
+    magic: adventurer.className === "Mage",
+    retreatAt: 1,
+    status: "active",
+  };
+}
+
+// Turn an enemy definition into a battle combatant. Enemies fight to 0 HP.
+function enemyCombatant(enemy) {
+  const s = enemy.stats;
+  return {
+    name: enemy.name,
+    side: "enemy",
+    hp: s.HP,
+    maxHp: s.HP,
+    atk: s.ATK,
+    matk: s.MATK || 0,
+    def: s.DEF,
+    crit: s.CRIT,
+    critDmg: s["CRIT DMG"],
+    eva: s.EVA,
+    magic: false,
+    retreatAt: 0,
+    status: "active",
+  };
+}
+
+// Give same-named enemies distinct labels (Goblin A, Goblin B, …) so the log
+// and cards stay readable when a dungeon stacks duplicates.
+function disambiguate(combatants) {
+  const counts = {};
+  for (const c of combatants) counts[c.name] = (counts[c.name] || 0) + 1;
+  const seen = {};
+  for (const c of combatants) {
+    if (counts[c.name] > 1) {
+      seen[c.name] = (seen[c.name] || 0) + 1;
+      c.name = `${c.name} ${String.fromCharCode(64 + seen[c.name])}`;
+    }
+  }
+}
+
+const isActive = (c) => c.status === "active";
+
+function logLine(text, kind) {
+  battle.log.push({ text, kind: kind || "" });
+}
+
+// Resolve a single attack from `attacker` against `target`, mutating the
+// target's HP and status and appending to the battle log.
+function resolveAttack(attacker, target) {
+  if (roll(target.eva)) {
+    logLine(`${target.name} evades ${attacker.name}'s attack!`, "evade");
+    return;
+  }
+
+  // Mages attack with MATK (ignoring DEF) at half value; everyone else swings
+  // with ATK, reduced by the target's DEF.
+  let dmg = attacker.magic ? attacker.matk * 0.5 : attacker.atk;
+  if (!attacker.magic) dmg -= target.def * 0.5;
+
+  const crit = roll(attacker.crit);
+  if (crit) dmg *= attacker.critDmg / 100;
+
+  dmg = Math.max(1, Math.round(dmg));
+  target.hp -= dmg;
+
+  logLine(
+    `${attacker.name} hits ${target.name} for ${dmg}${crit ? " (CRIT!)" : ""}.`,
+    attacker.side === "party" ? "party" : "enemy"
+  );
+
+  if (target.hp <= target.retreatAt) {
+    target.hp = target.retreatAt;
+    target.status = target.side === "party" ? "out" : "down";
+    logLine(
+      `${target.name} ${target.side === "party" ? "retreats at 1 HP." : "is defeated!"}`,
+      target.side === "party" ? "retreat" : "defeat"
+    );
+  }
+}
+
+function checkBattleEnd() {
+  if (!battle.enemies.some(isActive)) battle.result = "victory";
+  else if (!battle.party.some(isActive)) battle.result = "defeat";
+}
+
+// Advance the battle by one attack. When the round's queue empties, a fresh
+// round is built from whoever is still active (party first, then enemies).
+function battleStep() {
+  if (!battle || battle.result) return;
+
+  if (battle.queue.length === 0) {
+    battle.round += 1;
+    battle.queue = [...battle.party, ...battle.enemies].filter(isActive);
+  }
+
+  let attacker = null;
+  while (battle.queue.length) {
+    const next = battle.queue.shift();
+    if (isActive(next)) {
+      attacker = next;
+      break;
+    }
+  }
+
+  if (attacker) {
+    const foes = attacker.side === "party" ? battle.enemies : battle.party;
+    const target = foes.find(isActive);
+    if (target) resolveAttack(attacker, target);
+    checkBattleEnd();
+  }
+
+  renderBattle();
+  if (battle.result) stopBattleTimer();
+}
+
+function startBattle() {
+  const dungeon = getDungeon(state.selectedDungeonId);
+  if (!dungeon) return;
+
+  if (state.adventurers.length === 0) {
+    enterNoteEl.textContent = "You have no adventurers to send in — hire one first.";
+    enterNoteEl.classList.remove("hidden");
+    return;
+  }
+
+  const party = state.adventurers.map(partyCombatant);
+  const enemies = [];
+  dungeon.enemies.forEach((id) => {
+    if (ENEMIES[id]) enemies.push(enemyCombatant(ENEMIES[id]));
+  });
+  disambiguate(enemies);
+
+  battle = {
+    dungeonName: dungeon.name,
+    party,
+    enemies,
+    queue: [],
+    round: 0,
+    log: [{ text: `You enter ${dungeon.name}.`, kind: "" }],
+    result: null,
+  };
+
+  state.dungeonScreen = "battle";
+  renderDungeons();
+
+  stopBattleTimer();
+  battleTimer = setInterval(battleStep, BATTLE_STEP_MS);
+}
+
+function stopBattleTimer() {
+  if (battleTimer !== null) {
+    clearInterval(battleTimer);
+    battleTimer = null;
+  }
+}
+
+function leaveBattle() {
+  stopBattleTimer();
+  battle = null;
+  state.dungeonScreen = "detail";
+  renderDungeons();
+}
+
 const state = {
   gold: 1000,
   maxAdventurers: BASE_MAX_ADVENTURERS,
@@ -256,6 +457,13 @@ const enemyNameEl = document.getElementById("enemyName");
 const enemyStatsEl = document.getElementById("enemyStats");
 const enemyBackBtn = document.getElementById("enemyBack");
 const enemyCopyBtn = document.getElementById("enemyCopy");
+const battleScreenEl = document.getElementById("battleScreen");
+const battleTitleEl = document.getElementById("battleTitle");
+const battlePartyEl = document.getElementById("battleParty");
+const battleEnemiesEl = document.getElementById("battleEnemies");
+const battleResultEl = document.getElementById("battleResult");
+const battleLogEl = document.getElementById("battleLog");
+const battleBackBtn = document.getElementById("battleBack");
 
 // --- Model ---------------------------------------------------------------
 
@@ -613,12 +821,8 @@ function backToDungeonDetail() {
   renderDungeons();
 }
 
-// The autobattler isn't implemented yet — Enter just acknowledges for now.
 function enterDungeon() {
-  const dungeon = getDungeon(state.selectedDungeonId);
-  if (!dungeon) return;
-  enterNoteEl.textContent = `Entering ${dungeon.name}… (battle coming soon)`;
-  enterNoteEl.classList.remove("hidden");
+  startBattle();
 }
 
 // Build the plain-text blob copied from an enemy's page: name then one
@@ -675,10 +879,75 @@ function renderDungeons() {
   dungeonListEl.classList.toggle("hidden", screen !== "list");
   dungeonDetailEl.classList.toggle("hidden", screen !== "detail");
   enemyDetailEl.classList.toggle("hidden", screen !== "enemy");
+  battleScreenEl.classList.toggle("hidden", screen !== "battle");
 
   if (screen === "list") renderDungeonList();
   else if (screen === "detail") renderDungeonDetail();
   else if (screen === "enemy") renderEnemyDetail();
+  else if (screen === "battle") renderBattle();
+}
+
+// --- Battle rendering ----------------------------------------------------
+
+function battleUnitCard(combatant) {
+  const card = document.createElement("div");
+  card.className = `battle-unit ${combatant.side}`;
+  if (combatant.status === "out") card.classList.add("out");
+  if (combatant.status === "down") card.classList.add("down");
+
+  const head = document.createElement("div");
+  head.className = "battle-unit-head";
+
+  const name = document.createElement("span");
+  name.className = "battle-unit-name";
+  name.textContent = combatant.name;
+
+  const hpNum = document.createElement("span");
+  hpNum.className = "battle-unit-hp";
+  hpNum.textContent = `${combatant.hp} / ${combatant.maxHp}`;
+
+  head.append(name, hpNum);
+
+  const bar = document.createElement("div");
+  bar.className = "hpbar";
+  const fill = document.createElement("div");
+  fill.className = "hpbar-fill";
+  fill.style.width = `${Math.max(0, (combatant.hp / combatant.maxHp) * 100)}%`;
+  bar.appendChild(fill);
+
+  card.append(head, bar);
+  return card;
+}
+
+function renderBattle() {
+  if (!battle) return;
+
+  battleTitleEl.textContent = battle.dungeonName;
+
+  battlePartyEl.innerHTML = "";
+  battle.party.forEach((c) => battlePartyEl.appendChild(battleUnitCard(c)));
+
+  battleEnemiesEl.innerHTML = "";
+  battle.enemies.forEach((c) => battleEnemiesEl.appendChild(battleUnitCard(c)));
+
+  if (battle.result) {
+    battleResultEl.classList.remove("hidden");
+    battleResultEl.classList.toggle("victory", battle.result === "victory");
+    battleResultEl.classList.toggle("defeat", battle.result === "defeat");
+    battleResultEl.textContent =
+      battle.result === "victory" ? "Victory!" : "Defeat…";
+  } else {
+    battleResultEl.classList.add("hidden");
+  }
+
+  battleLogEl.innerHTML = "";
+  battle.log.forEach((entry) => {
+    const line = document.createElement("div");
+    line.className = `log-line ${entry.kind}`;
+    line.textContent = entry.text;
+    battleLogEl.appendChild(line);
+  });
+  battleLogEl.scrollTop = battleLogEl.scrollHeight;
 }
 
 function renderDungeonList() {
@@ -777,6 +1046,7 @@ function init() {
   dungeonEnterBtn.addEventListener("click", enterDungeon);
   enemyBackBtn.addEventListener("click", backToDungeonDetail);
   enemyCopyBtn.addEventListener("click", copyEnemy);
+  battleBackBtn.addEventListener("click", leaveBattle);
 
   // Allow cancelling a hire by clicking the backdrop or pressing Escape.
   classModalEl.addEventListener("click", (e) => {
