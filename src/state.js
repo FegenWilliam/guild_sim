@@ -2,6 +2,9 @@
 // Systems mutate it and the UI renders from it.
 const state = {
   gold: 1000,
+  // The current day. Passing the day heals the whole party to full — the main
+  // brake on running dungeons back to back (see systems/day.js).
+  day: 1,
   maxAdventurers: BASE_MAX_ADVENTURERS,
   adventurers: [],
   selectedId: null,

@@ -9,6 +9,9 @@ const DUNGEONS = [
     name: "The High Tower",
     recommendation: "Lv 1–50",
     enemies: ["goblin"],
+    // A run tops out at 100 waves; clearing them all ends the run (HP kept) and
+    // it can be run again from the start.
+    maxWaves: 100,
   },
 ];
 

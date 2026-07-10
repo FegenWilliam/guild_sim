@@ -11,8 +11,25 @@
     <h1>Guild Sim</h1>
 
     <div class="topbar">
+      <div class="resource">Day: <span id="day">1</span></div>
       <div class="resource">Gold: <span id="gold">0</span></div>
       <div class="resource">Adventurers: <span id="count">0</span> / <span id="max">0</span></div>
+    </div>
+
+    <!-- Passing the day heals the party to full — the brake on back-to-back
+         dungeon runs. Confirmed before it takes effect. -->
+    <div class="daybar">
+      <button id="passDay" type="button" class="passday-btn">Pass Day →</button>
+      <span class="day-hint">Rests the party to full HP.</span>
+    </div>
+
+    <!-- Save controls: progress autosaves to this browser; these move it in
+         and out as a file. -->
+    <div class="savebar">
+      <button id="exportSave" type="button" class="save-btn">Export Save</button>
+      <button id="importSave" type="button" class="save-btn">Import Save</button>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
+      <span class="save-note" id="saveNote" role="status" aria-live="polite"></span>
     </div>
 
     <!-- Top-level view switcher: the Adventurers menu and the Dungeons menu
@@ -46,6 +63,10 @@
       <div class="xpbar" aria-label="Experience">
         <div class="xpbar-fill" id="xpFill"></div>
         <span class="xpbar-text" id="xpText">0 / 100 XP</span>
+      </div>
+      <div class="xpbar hpbar-wide" aria-label="Health">
+        <div class="xpbar-fill hp-fill" id="hpFill"></div>
+        <span class="xpbar-text" id="hpText">0 / 0 HP</span>
       </div>
       <div class="tabs" role="tablist" aria-label="Adventurer detail tabs">
         <button id="tabStats" type="button" class="tab active" data-tab="stats" role="tab">Stats</button>
@@ -137,6 +158,19 @@
     </div>
   </div>
 
+  <!-- Confirmation dialog: reused for any action that needs an "are you sure?"
+       (currently Pass Day). -->
+  <div class="modal-overlay hidden" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="modal">
+      <h2 id="confirmTitle">Confirm</h2>
+      <p class="modal-sub" id="confirmMsg"></p>
+      <div class="confirm-actions">
+        <button id="confirmCancel" type="button" class="save-btn">Cancel</button>
+        <button id="confirmOk" type="button" class="enter-btn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Loaded as classic scripts sharing one global scope, in dependency
        order: config → data → state → systems → ui → entry point. -->
   <script src="src/config.js"></script>
@@ -146,7 +180,9 @@
   <script src="src/data/enemies.js"></script>
   <script src="src/data/dungeons.js"></script>
   <script src="src/state.js"></script>
+  <script src="src/systems/save.js"></script>
   <script src="src/systems/adventurer.js"></script>
+  <script src="src/systems/day.js"></script>
   <script src="src/systems/battle.js"></script>
   <script src="src/ui/dom.js"></script>
   <script src="src/ui/adventurers.js"></script>

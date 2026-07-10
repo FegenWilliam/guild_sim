@@ -42,14 +42,20 @@ function renderBattle() {
   battleEnemiesEl.innerHTML = "";
   battle.enemies.forEach((c) => battleEnemiesEl.appendChild(battleUnitCard(c)));
 
-  if (battle.result) {
-    battleResultEl.classList.remove("hidden");
-    battleResultEl.classList.toggle("victory", battle.result === "victory");
-    battleResultEl.classList.toggle("defeat", battle.result === "defeat");
+  if (battle.result === "cleared") {
+    // Ran the dungeon to its wave cap. A win banner; the party can run it again.
+    battleResultEl.className = "battle-result victory";
+    battleResultEl.textContent = `Dungeon cleared — all ${battle.wavesCleared} waves!`;
+  } else if (battle.result) {
+    // The party retreated: an "over" banner reporting how many waves they cleared.
+    const cleared = battle.wavesCleared;
+    battleResultEl.className = "battle-result over";
     battleResultEl.textContent =
-      battle.result === "victory" ? "Victory!" : "Defeat…";
+      cleared > 0
+        ? `Run over — cleared ${cleared} wave${cleared === 1 ? "" : "s"}!`
+        : "Run over — the party was overwhelmed.";
   } else {
-    battleResultEl.classList.add("hidden");
+    battleResultEl.className = "battle-result hidden";
   }
 
   battleLogEl.innerHTML = "";

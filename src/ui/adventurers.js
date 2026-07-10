@@ -29,6 +29,8 @@ function renameSelected(newName) {
   // name input keeps focus and caret position while typing.
   const box = rosterEl.querySelector(`[data-id="${selected.id}"]`);
   if (box) box.textContent = displayName(selected);
+  // Renaming skips the full render (to keep the caret), so save explicitly.
+  scheduleSave();
 }
 
 // --- Class picker modal --------------------------------------------------
@@ -50,6 +52,30 @@ function chooseClass(className) {
   const onChoose = pendingChoice;
   closeClassPicker();
   if (onChoose) onChoose(className);
+}
+
+// --- Confirmation modal --------------------------------------------------
+
+let pendingConfirm = null;
+
+// Show an "are you sure?" dialog. `onConfirm` runs only if the player accepts.
+function openConfirm({ title, message, okLabel = "Confirm", onConfirm }) {
+  pendingConfirm = onConfirm;
+  confirmTitleEl.textContent = title;
+  confirmMsgEl.textContent = message;
+  confirmOkBtn.textContent = okLabel;
+  confirmModalEl.classList.remove("hidden");
+}
+
+function closeConfirm() {
+  pendingConfirm = null;
+  confirmModalEl.classList.add("hidden");
+}
+
+function acceptConfirm() {
+  const onConfirm = pendingConfirm;
+  closeConfirm();
+  if (onConfirm) onConfirm();
 }
 
 function renderClassChoices() {
@@ -123,6 +149,12 @@ function renderStatsheet() {
   const pct = Math.max(0, Math.min(100, (selected.xp / needed) * 100));
   xpFillEl.style.width = `${pct}%`;
   xpTextEl.textContent = `${formatXP(selected.xp)} / ${needed} XP`;
+
+  // Current HP persists between runs (heals on Pass Day), so surface it here.
+  const hp = currentHp(selected);
+  const max = maxHp(selected);
+  hpFillEl.style.width = `${Math.max(0, Math.min(100, (hp / max) * 100))}%`;
+  hpTextEl.textContent = `${hp} / ${max} HP`;
 
   renderStats(selected);
   renderEquipment(selected);
@@ -216,6 +248,7 @@ function setTab(tab) {
 
 // Top-level render for the adventurers view: topbar + roster + statsheet.
 function render() {
+  dayEl.textContent = state.day;
   goldEl.textContent = state.gold;
   countEl.textContent = state.adventurers.length;
   maxEl.textContent = state.maxAdventurers;
@@ -226,4 +259,8 @@ function render() {
 
   renderRoster();
   renderStatsheet();
+
+  // Any full render follows a meaningful state change (hire, select, XP gain,
+  // gold spent), so it's the natural place to persist progress.
+  scheduleSave();
 }

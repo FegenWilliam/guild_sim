@@ -3,15 +3,33 @@
 // class + level + gear, and handles XP/leveling. No DOM here.
 
 function createAdventurer(className) {
-  return {
+  const adventurer = {
     id: state.nextId++,
     name: "Adventurer",
     className,
     level: 1,
     xp: 0,
+    // Current HP persists between dungeon runs and only refills when the day is
+    // passed. A newbie starts at full.
+    hp: 0,
     equipment: createEquipment(),
     inventory: [], // items indexed by slot; empty for now
   };
+  adventurer.hp = maxHp(adventurer);
+  return adventurer;
+}
+
+// An adventurer's maximum HP — the HP from their effective statline.
+function maxHp(adventurer) {
+  return effectiveStats(adventurer).HP;
+}
+
+// An adventurer's current HP, clamped to [0, max]. Falls back to full for older
+// saves that predate persistent HP.
+function currentHp(adventurer) {
+  const max = maxHp(adventurer);
+  if (typeof adventurer.hp !== "number") return max;
+  return Math.max(0, Math.min(adventurer.hp, max));
 }
 
 function getSelected() {
