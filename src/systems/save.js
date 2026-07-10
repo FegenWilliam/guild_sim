@@ -27,9 +27,30 @@ function applySave(data) {
   for (const field of SAVED_FIELDS) {
     if (field in data) state[field] = data[field];
   }
-  // Saves from before persistent HP won't carry an `hp`; start those at full.
+  // Normalize adventurers from older saves, which may predate persistent HP/MP,
+  // the skill system, or the switch of `skills` from a list to a level map.
   state.adventurers.forEach((a) => {
     if (typeof a.hp !== "number") a.hp = maxHp(a);
+    if (typeof a.mp !== "number") a.mp = maxMp(a);
+
+    // `skills` used to be an array of learned ids; it's now a { id: level } map.
+    // Migrate an old array (each learned skill starts at Lv 1) and coerce
+    // anything unexpected to an empty map.
+    if (Array.isArray(a.skills)) {
+      const map = {};
+      a.skills.forEach((id) => { map[id] = 1; });
+      a.skills = map;
+    } else if (!a.skills || typeof a.skills !== "object") {
+      a.skills = {};
+    }
+    // Ensure the class starter is always present at Lv 1.
+    const starter = starterSkillForClass(a.className);
+    if (starter && !a.skills[starter.id]) a.skills[starter.id] = 1;
+
+    // Skill points: grant the level-ups already earned to pre-skill-system
+    // adventurers so their banked levels aren't lost.
+    if (typeof a.skillPoints !== "number") a.skillPoints = Math.max(0, a.level - 1);
+    if (a.strategy !== "highest" && a.strategy !== "lowest") a.strategy = "lowest";
   });
   if (!state.adventurers.some((a) => a.id === state.selectedId)) {
     state.selectedId = state.adventurers.length ? state.adventurers[0].id : null;

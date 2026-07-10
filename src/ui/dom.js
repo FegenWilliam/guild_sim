@@ -25,11 +25,15 @@ const xpFillEl = document.getElementById("xpFill");
 const xpTextEl = document.getElementById("xpText");
 const hpFillEl = document.getElementById("hpFill");
 const hpTextEl = document.getElementById("hpText");
+const mpFillEl = document.getElementById("mpFill");
+const mpTextEl = document.getElementById("mpText");
 const statsEl = document.getElementById("stats");
 const equipmentEl = document.getElementById("equipment");
 const inventoryPanelEl = document.getElementById("inventoryPanel");
 const inventoryEl = document.getElementById("inventory");
 const invUnlockedEl = document.getElementById("invUnlocked");
+const skillsPanelEl = document.getElementById("skillsPanel");
+const skillsEl = document.getElementById("skills");
 const tabButtons = document.querySelectorAll(".tab");
 const emptyHintEl = document.getElementById("emptyHint");
 
@@ -38,6 +42,7 @@ const TAB_PANELS = {
   stats: statsEl,
   equipment: equipmentEl,
   inventory: inventoryPanelEl,
+  skills: skillsPanelEl,
 };
 
 // Class picker modal.

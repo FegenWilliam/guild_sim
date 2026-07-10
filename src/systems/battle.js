@@ -39,6 +39,10 @@ function partyCombatant(adventurer) {
     side: "party",
     hp: currentHp(adventurer),
     maxHp: s.HP,
+    // MP carries over between runs just like HP — it enters at its persisted
+    // value and only refills on Pass Day.
+    mp: currentMp(adventurer),
+    maxMp: s.MP,
     atk: s.ATK,
     matk: s.MATK,
     def: s.DEF,
@@ -46,6 +50,12 @@ function partyCombatant(adventurer) {
     critDmg: s["CRIT DMG"],
     eva: s.EVA,
     magic: adventurer.className === "Mage",
+    // The full statline, learned skills ({ id: level } map), and targeting
+    // preference ride along so the AI can pick and aim skills mid-fight. Skill
+    // damage scales off primaries (DEX/INT) and the skill's level.
+    stats: s,
+    skills: adventurer.skills || {},
+    strategy: adventurer.strategy === "highest" ? "highest" : "lowest",
     retreatAt: 1,
     status: "active",
   };
@@ -91,18 +101,21 @@ function logLine(text, kind) {
   battle.log.push({ text, kind: kind || "" });
 }
 
-// Resolve a single attack from `attacker` against `target`, mutating the
-// target's HP and status and appending to the battle log.
-function resolveAttack(attacker, target) {
+// Land one hit of `baseDamage` from `attacker` on `target`: roll evasion, apply
+// DEF (unless the hit ignores it), roll a crit, floor at 1, then mutate HP and
+// status and log it. `label` names the source — a skill's name, or "" for a
+// plain attack — so both the basic swing and every skill hit share this path.
+function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" } = {}) {
   if (roll(target.eva)) {
-    logLine(`${target.name} evades ${attacker.name}'s attack!`, "evade");
+    logLine(
+      `${target.name} evades ${attacker.name}${label ? `'s ${label}` : "'s attack"}!`,
+      "evade"
+    );
     return;
   }
 
-  // Mages attack with MATK (ignoring DEF) at half value; everyone else swings
-  // with ATK, reduced by the target's DEF.
-  let dmg = attacker.magic ? attacker.matk * 0.5 : attacker.atk;
-  if (!attacker.magic) dmg -= target.def * 0.5;
+  let dmg = baseDamage;
+  if (!ignoreDef) dmg -= target.def * 0.5;
 
   const crit = roll(attacker.crit);
   if (crit) dmg *= attacker.critDmg / 100;
@@ -111,7 +124,7 @@ function resolveAttack(attacker, target) {
   target.hp -= dmg;
 
   logLine(
-    `${attacker.name} hits ${target.name} for ${dmg}${crit ? " (CRIT!)" : ""}.`,
+    `${attacker.name} ${label ? `${label} hits` : "hits"} ${target.name} for ${dmg}${crit ? " (CRIT!)" : ""}.`,
     attacker.side === "party" ? "party" : "enemy"
   );
 
@@ -122,6 +135,83 @@ function resolveAttack(attacker, target) {
       `${target.name} ${target.side === "party" ? "retreats at 1 HP." : "is defeated!"}`,
       target.side === "party" ? "retreat" : "defeat"
     );
+  }
+}
+
+// Resolve a single basic attack from `attacker` against `target`. Mages swing
+// with half their MATK ignoring DEF; everyone else swings with ATK.
+function resolveAttack(attacker, target) {
+  const base = attacker.magic ? attacker.matk * 0.5 : attacker.atk;
+  dealHit(attacker, target, base, { ignoreDef: attacker.magic });
+}
+
+// Order the still-active foes by the attacker's targeting strategy: "lowest"
+// puts the weakest-HP foe first (finish them off), "highest" the toughest.
+function orderFoesByStrategy(attacker, foes) {
+  const active = foes.filter(isActive);
+  const dir = attacker.strategy === "highest" ? -1 : 1;
+  return active.sort((a, b) => dir * (a.hp - b.hp) || 0);
+}
+
+// The damage a skill would land on a target *without* a crit or a dodge — the
+// floor the AI uses to decide whether a hit would finish a lone enemy.
+function estimateSkillDamage(attacker, skill, target) {
+  let dmg = skillDamage(attacker.stats, skill, skillLevel(attacker, skill.id));
+  if (!skillIgnoresDef(skill)) dmg -= target.def * 0.5;
+  return Math.max(1, Math.round(dmg));
+}
+
+// Pick a skill for a combatant to use this turn against `foes`, or null to fall
+// back to a basic attack. Only party members carry skills. We take the first
+// learned, affordable, *appropriate* skill in catalog order (starter first):
+// a multi-target skill is only worth casting when 2+ enemies are up, or when it
+// would finish a lone enemy; single-target skills fire whenever affordable.
+function chooseSkill(attacker, foes) {
+  if (attacker.side !== "party" || !attacker.skills) return null;
+
+  const active = foes.filter(isActive);
+  if (!active.length) return null;
+
+  for (const id of SKILL_ORDER) {
+    if (!hasLearned(attacker, id)) continue;
+    const skill = skillById(id);
+    const level = skillLevel(attacker, id);
+    if (attacker.mp < skillCost(skill, attacker.maxMp, level)) continue;
+
+    if (skillMaxTargets(skill, level) >= 2 && active.length < 2) {
+      // A single foe left: only spend the AoE if it would put them down.
+      const lone = orderFoesByStrategy(attacker, active)[0];
+      if (estimateSkillDamage(attacker, skill, lone) < lone.hp) continue;
+    }
+    return skill;
+  }
+  return null;
+}
+
+// Land one volley of a skill: aim by strategy, hit up to its (leveled) target
+// count. Split out so Repeat can fire it again, re-aiming at whoever's left.
+function skillVolley(attacker, skill, level, foes) {
+  const targets = orderFoesByStrategy(attacker, foes).slice(0, skillMaxTargets(skill, level));
+  if (!targets.length) return;
+  const base = skillDamage(attacker.stats, skill, level);
+  const ignoreDef = skillIgnoresDef(skill);
+  targets.forEach((t) => dealHit(attacker, t, base, { ignoreDef, label: skill.name }));
+}
+
+// Resolve a skill: pay its MP once, then fire its volley — plus one more volley
+// per Repeat the skill has at this level, re-aiming each time (stopping early if
+// no foes remain). Damage/targets/cost all come from the skill's leveled params.
+function resolveSkill(attacker, skill, foes) {
+  const level = skillLevel(attacker, skill.id);
+  const cost = skillCost(skill, attacker.maxMp, level);
+  attacker.mp = Math.max(0, attacker.mp - cost);
+  logLine(`${attacker.name} uses ${skill.name}! (-${cost} MP)`, "skill");
+
+  const volleys = 1 + skillRepeat(skill, level);
+  for (let i = 0; i < volleys; i++) {
+    if (i > 0) logLine(`${skill.name} repeats!`, "skill");
+    skillVolley(attacker, skill, level, foes);
+    if (!foes.some(isActive)) break; // nothing left to hit
   }
 }
 
@@ -144,12 +234,16 @@ function rollEnemyPack(dungeon) {
   return { enemies, xpPool };
 }
 
-// Copy each party combatant's live HP back onto its adventurer so damage taken
-// in the dungeon persists once the run ends (or the player leaves).
+// Copy each party combatant's live HP and MP back onto its adventurer so damage
+// taken and MP spent in the dungeon persist once the run ends (or the player
+// leaves).
 function syncPartyHp() {
   for (const c of battle.party) {
     const adv = state.adventurers.find((a) => a.id === c.id);
-    if (adv) adv.hp = c.hp;
+    if (adv) {
+      adv.hp = c.hp;
+      adv.mp = c.mp;
+    }
   }
 }
 
@@ -227,8 +321,18 @@ function battleStep() {
 
   if (attacker) {
     const foes = attacker.side === "party" ? battle.enemies : battle.party;
-    const target = foes.find(isActive);
-    if (target) resolveAttack(attacker, target);
+    // Use a skill if one's affordable and appropriate, else a basic attack. A
+    // party member aims by its strategy; enemies just hit the first foe up.
+    const skill = chooseSkill(attacker, foes);
+    if (skill) {
+      resolveSkill(attacker, skill, foes);
+    } else {
+      const target =
+        attacker.side === "party"
+          ? orderFoesByStrategy(attacker, foes)[0]
+          : foes.find(isActive);
+      if (target) resolveAttack(attacker, target);
+    }
     syncPartyHp();
     checkBattleEnd();
   }

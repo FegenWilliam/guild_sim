@@ -9,7 +9,7 @@ const state = {
   adventurers: [],
   selectedId: null,
   nextId: 1,
-  activeTab: "stats", // "stats" | "equipment" | "inventory"
+  activeTab: "stats", // "stats" | "equipment" | "inventory" | "skills"
   view: "adventurers", // "adventurers" | "dungeons"
   // Which screen the dungeons view is showing:
   //   "list"   — pick a dungeon
