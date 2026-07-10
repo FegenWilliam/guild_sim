@@ -103,6 +103,61 @@ function addToInventory(adventurer, item) {
   return true;
 }
 
+// --- Equipping -------------------------------------------------------------
+//
+// An equipment item's `slot` names the slot it goes in (matching an
+// EQUIPMENT_SLOTS id). Equipping moves it from the bag onto the body; if that
+// slot was already filled, the old piece swaps back into the freed bag space.
+// A bag *is* equipment too, so swapping to a smaller bag (or unequipping one)
+// can shrink capacity — those moves are refused when they'd overflow the bag.
+
+// Equip the inventory item at `index` into its matching slot. Returns whether it
+// equipped (false if it isn't equipment, its slot is missing/locked, or a bag
+// swap would leave the bag over capacity).
+function equipFromInventory(adventurer, index) {
+  const item = adventurer.inventory[index];
+  if (!isEquipment(item)) return false;
+  const slot = EQUIPMENT_SLOTS.find((s) => s.id === item.slot);
+  if (!slot || slot.locked) return false;
+
+  const prev = adventurer.equipment[item.slot];
+  adventurer.equipment[item.slot] = item;
+  adventurer.inventory.splice(index, 1);
+
+  // Any displaced piece returns to the bag. With `equipment` already updated,
+  // inventorySlots() reflects the new bag, so this also catches a shrinking
+  // bag swap that leaves no room for the old one.
+  if (prev) {
+    if (adventurer.inventory.length + 1 > inventorySlots(adventurer)) {
+      adventurer.inventory.splice(index, 0, item); // undo
+      adventurer.equipment[item.slot] = prev;
+      return false;
+    }
+    adventurer.inventory.push(prev);
+  } else if (adventurer.inventory.length > inventorySlots(adventurer)) {
+    adventurer.inventory.splice(index, 0, item); // undo (shrinking bag)
+    adventurer.equipment[item.slot] = null;
+    return false;
+  }
+  return true;
+}
+
+// Unequip the item in `slotId` back into the bag. Returns whether it came off
+// (false if the slot is empty, or removing a bag would shrink capacity below
+// what's already carried — the bag itself needs a slot too).
+function unequipToInventory(adventurer, slotId) {
+  const item = adventurer.equipment[slotId];
+  if (!item) return false;
+
+  adventurer.equipment[slotId] = null;
+  if (adventurer.inventory.length + 1 > inventorySlots(adventurer)) {
+    adventurer.equipment[slotId] = item; // undo
+    return false;
+  }
+  adventurer.inventory.push(item);
+  return true;
+}
+
 // --- Loot ------------------------------------------------------------------
 
 // A fresh inventory item from a loot drop (see enemies.js loot tables).

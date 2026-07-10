@@ -444,6 +444,80 @@ h1 {
   font-style: italic;
 }
 
+/* The item name sits between its slot label and the equip/unequip button. */
+.equip-item {
+  flex: 1;
+  text-align: right;
+  margin-right: 0.75rem;
+}
+
+.equip-btn {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 0.35rem 0.7rem;
+  color: #f4e9ff;
+  background: #372c52;
+  border: 1px solid #4a3d68;
+  border-radius: 0.45rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+}
+
+.equip-btn:hover {
+  background: #45376a;
+  border-color: #d9b3ff;
+}
+
+.equip-btn:active {
+  transform: scale(0.96);
+}
+
+.equip-btn:disabled {
+  color: #6b6382;
+  background: #221d31;
+  border-color: #322a45;
+  cursor: not-allowed;
+}
+
+/* The inline "pick a piece to equip" list drops under an open empty slot. */
+.equip-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem 0.6rem 0.6rem;
+  margin: -0.2rem 0 0.2rem;
+  background: #16131f;
+  border: 1px solid #322a45;
+  border-radius: 0.5rem;
+}
+
+.equip-option {
+  text-align: left;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.45rem 0.7rem;
+  color: #ece7f5;
+  background: #221d31;
+  border: 1px solid #3a3150;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.equip-option:hover {
+  background: #2f2843;
+  border-color: #d9b3ff;
+}
+
+.equip-picker-empty {
+  font-size: 0.82rem;
+  font-style: italic;
+  color: #6b6382;
+  padding: 0.2rem 0.3rem;
+}
+
 /* --- Inventory --- */
 
 .inventory {
