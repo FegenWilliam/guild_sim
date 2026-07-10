@@ -230,6 +230,11 @@
   <script src="src/data/enemies.js"></script>
   <script src="src/data/dungeons.js"></script>
   <script src="src/data/skills.js"></script>
+  <!-- Load-time content check: reads the data files above and warns in the
+       console about typos (bad stat/slot/enemy ids, duplicate ids, …). No
+       gameplay effect — a content-authoring aid. Loaded last so all catalogs
+       it inspects are defined. -->
+  <script src="src/data/validate.js"></script>
   <script src="src/state.js"></script>
   <script src="src/systems/save.js"></script>
   <script src="src/systems/adventurer.js"></script>
