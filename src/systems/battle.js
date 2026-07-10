@@ -175,9 +175,10 @@ function chooseSkill(attacker, foes) {
   for (const id of SKILL_ORDER) {
     if (!hasLearned(attacker, id)) continue;
     const skill = skillById(id);
-    if (attacker.mp < skillCost(skill, attacker.maxMp)) continue;
+    const level = skillLevel(attacker, id);
+    if (attacker.mp < skillCost(skill, attacker.maxMp, level)) continue;
 
-    if ((skill.maxTargets || 1) >= 2 && active.length < 2) {
+    if (skillMaxTargets(skill, level) >= 2 && active.length < 2) {
       // A single foe left: only spend the AoE if it would put them down.
       const lone = orderFoesByStrategy(attacker, active)[0];
       if (estimateSkillDamage(attacker, skill, lone) < lone.hp) continue;
@@ -187,22 +188,31 @@ function chooseSkill(attacker, foes) {
   return null;
 }
 
-// Resolve a skill: pay its MP, then land its damage on up to `maxTargets` foes,
-// picked by the caster's targeting strategy. Damage scales off the caster's
-// full statline and the skill's level; the "ignoreDef" effect skips DEF.
-function resolveSkill(attacker, skill, foes) {
-  const targets = orderFoesByStrategy(attacker, foes).slice(0, skill.maxTargets || 1);
+// Land one volley of a skill: aim by strategy, hit up to its (leveled) target
+// count. Split out so Repeat can fire it again, re-aiming at whoever's left.
+function skillVolley(attacker, skill, level, foes) {
+  const targets = orderFoesByStrategy(attacker, foes).slice(0, skillMaxTargets(skill, level));
   if (!targets.length) return;
+  const base = skillDamage(attacker.stats, skill, level);
+  const ignoreDef = skillIgnoresDef(skill);
+  targets.forEach((t) => dealHit(attacker, t, base, { ignoreDef, label: skill.name }));
+}
 
-  const cost = skillCost(skill, attacker.maxMp);
+// Resolve a skill: pay its MP once, then fire its volley — plus one more volley
+// per Repeat the skill has at this level, re-aiming each time (stopping early if
+// no foes remain). Damage/targets/cost all come from the skill's leveled params.
+function resolveSkill(attacker, skill, foes) {
+  const level = skillLevel(attacker, skill.id);
+  const cost = skillCost(skill, attacker.maxMp, level);
   attacker.mp = Math.max(0, attacker.mp - cost);
   logLine(`${attacker.name} uses ${skill.name}! (-${cost} MP)`, "skill");
 
-  const base = skillDamage(attacker.stats, skill, skillLevel(attacker, skill.id));
-  const ignoreDef = skillIgnoresDef(skill);
-  targets.forEach((t) =>
-    dealHit(attacker, t, base, { ignoreDef, label: skill.name })
-  );
+  const volleys = 1 + skillRepeat(skill, level);
+  for (let i = 0; i < volleys; i++) {
+    if (i > 0) logLine(`${skill.name} repeats!`, "skill");
+    skillVolley(attacker, skill, level, foes);
+    if (!foes.some(isActive)) break; // nothing left to hit
+  }
 }
 
 // Roll a fresh enemy pack for the current dungeon: each enemy the dungeon lists

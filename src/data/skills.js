@@ -38,12 +38,31 @@
 //                                 //   { ATK: 1.5 }          → 1.5 × ATK
 //                                 //   { DEX: 2, ATK: 0.5 }  → 2 × DEX + 0.5 × ATK
 //                                 //   { INT: 2, MATK: 1 }   → 2 × INT + 1 × MATK
-//     damagePerLevel: 0.1,        // optional: extra damage per skill level above
-//                                 //   Lv 1 (0.1 = +10%/level). Omitted → uses
-//                                 //   SKILL_DAMAGE_PER_LEVEL. Set 0 for a skill
-//                                 //   whose level is purely an unlock gate.
+//     repeat: 0,                  // base extra casts per use (see Repeat below).
+//                                 //   Usually 0 and granted by a level instead.
 //     effects: [],                // special-effect flags (strings). See below.
+//
+//     // --- Per-level scaling -------------------------------------------------
+//     damagePerLevel: 0.1,        // the "default fill": what a level with no
+//                                 //   explicit entry grants (0.1 = +10% damage).
+//                                 //   Omitted → SKILL_DAMAGE_PER_LEVEL.
+//     levelUps: [ ... ],          // optional. Entry i is the bonus gained on
+//                                 //   reaching level i+2 (so [0] = Lv 2's gain,
+//                                 //   [8] = Lv 10's). A missing entry falls back
+//                                 //   to the default fill; an entry REPLACES it,
+//                                 //   so combine effects in one object if you
+//                                 //   want both. Each entry may set any of:
+//                                 //     damagePct: 0.15   → +15% damage
+//                                 //     damageFlat: 10    → +10 flat damage
+//                                 //     costPct: 0.10     → -10% MP cost
+//                                 //     costFlat: 5       → -5 flat MP cost
+//                                 //     targets: 1        → +1 max targets
+//                                 //     power: { DEX: 0.5 } → +0.5 to DEX's mult
+//                                 //     repeat: 1         → +1 extra cast
 //   }
+//
+// (For a skill whose level is a pure unlock gate with no power growth, set
+//  `damagePerLevel: 0` and give it no `levelUps`.)
 //
 // ----------------------------------------------------------------------------
 // Special effects
@@ -55,6 +74,10 @@
 //   "ignoreDef" — the hit skips the target's DEF reduction entirely (like a
 //                 Mage's magic). Magic Bolt uses this.
 //
+// Repeat is not a flag but a number (`repeat`, grown by `levelUps`): after a
+// skill resolves it fires again that many extra times, re-aiming each time. One
+// MP payment covers the whole thing.
+//
 // Planned effect *types* the schema is meant to grow into — % max-HP damage,
 // buffs, and debuffs — aren't wired into combat yet. When you want a new one,
 // add the flag here and ask, and the matching logic gets added to battle.js.
@@ -63,8 +86,8 @@
 // Every skill levels from 1 to this cap.
 const SKILL_LEVEL_CAP = 10;
 
-// Default damage growth per skill level above Lv 1 (+10%/level). A skill can
-// override this with its own `damagePerLevel` (0 = level is an unlock gate only).
+// Default damage growth for a level with no explicit `levelUps` entry
+// (+10%/level). A skill can override this with its own `damagePerLevel`.
 const SKILL_DAMAGE_PER_LEVEL = 0.1;
 
 const SKILLS = {
@@ -80,6 +103,18 @@ const SKILLS = {
     maxTargets: 3,
     power: { ATK: 1.5 },
     effects: [],
+    // Grows wider and harder-hitting, then finishes with a second swing.
+    levelUps: [
+      { damagePct: 0.1 },        // Lv 2  +10% damage
+      { damagePct: 0.1 },        // Lv 3  +10% damage
+      { power: { ATK: 0.25 } },  // Lv 4  ATK scaling 1.5 → 1.75
+      { targets: 1 },            // Lv 5  now hits 4
+      { damagePct: 0.15 },       // Lv 6  +15% damage
+      { costFlat: 4 },           // Lv 7  cost 20 → 16 MP
+      { targets: 1 },            // Lv 8  now hits 5
+      { damagePct: 0.2 },        // Lv 9  +20% damage
+      { repeat: 1 },             // Lv 10 sweeps twice per use
+    ],
   },
 
   // --- Ranger ---
@@ -94,6 +129,18 @@ const SKILLS = {
     maxTargets: 1,
     power: { DEX: 2, ATK: 0.5 },
     effects: [],
+    // Sharpens its DEX scaling and gets cheaper, then double-fires.
+    levelUps: [
+      { damagePct: 0.1 },        // Lv 2  +10% damage
+      { power: { DEX: 0.5 } },   // Lv 3  DEX scaling 2 → 2.5
+      { damagePct: 0.1 },        // Lv 4  +10% damage
+      { costPct: 0.1 },          // Lv 5  -10% MP cost
+      { power: { DEX: 0.5 } },   // Lv 6  DEX scaling → 3
+      { damageFlat: 15 },        // Lv 7  +15 flat damage
+      { damagePct: 0.15 },       // Lv 8  +15% damage
+      { costPct: 0.2 },          // Lv 9  -20% more MP cost
+      { repeat: 1 },             // Lv 10 fires a second arrow
+    ],
   },
 
   // --- Mage ---
@@ -108,6 +155,18 @@ const SKILLS = {
     maxTargets: 1,
     power: { INT: 2, MATK: 1 },
     effects: ["ignoreDef"],
+    // Scales its INT/MATK, learns to double-cast, then splits to a 2nd target.
+    levelUps: [
+      { damagePct: 0.1 },        // Lv 2  +10% damage
+      { damagePct: 0.1 },        // Lv 3  +10% damage
+      { power: { INT: 0.5 } },   // Lv 4  INT scaling 2 → 2.5
+      { costFlat: 5 },           // Lv 5  cost 25 → 20 MP
+      { damagePct: 0.15 },       // Lv 6  +15% damage
+      { power: { MATK: 0.5 } },  // Lv 7  MATK scaling 1 → 1.5
+      { repeat: 1 },             // Lv 8  casts twice per use
+      { damagePct: 0.2 },        // Lv 9  +20% damage
+      { targets: 1 },            // Lv 10 the bolt forks to 2 enemies
+    ],
   },
 };
 
@@ -129,29 +188,79 @@ function starterSkillForClass(className) {
   return skillsForClass(className).find((s) => s.starter) || null;
 }
 
-// Resolve a skill's MP cost to a concrete number for a caster whose max MP is
-// `maxMp`. Percent costs round up so a "10%" skill never rounds down to free.
-function skillCost(skill, maxMp) {
-  const c = skill.cost;
-  if (c.type === "percent") return Math.ceil((maxMp * c.amount) / 100);
-  return c.amount;
+// Collapse a skill's base stats and its per-level bonuses into the concrete
+// parameters it has at `level`. Walks each level-up step 2..level, applying the
+// matching `levelUps` entry (or the default damage fill when a step is blank).
+// This is the one place scaling lives; damage/cost/targets/repeat all read it.
+function effectiveSkill(skill, level) {
+  const lvl = Math.max(1, Math.min(level || 1, SKILL_LEVEL_CAP));
+  const power = { ...skill.power };
+  let extraTargets = 0;
+  let damageMult = 1; // 1 + sum of damagePct
+  let damageFlat = 0;
+  let costPctCut = 0; // fraction of base cost removed
+  let costFlatCut = 0; // flat MP removed
+  let repeat = skill.repeat || 0;
+
+  // A level with no explicit entry just grants the default damage bump.
+  const per = skill.damagePerLevel != null ? skill.damagePerLevel : SKILL_DAMAGE_PER_LEVEL;
+  const defaultStep = { damagePct: per };
+
+  for (let L = 2; L <= lvl; L++) {
+    const step = (skill.levelUps && skill.levelUps[L - 2]) || defaultStep;
+    if (step.damagePct) damageMult += step.damagePct;
+    if (step.damageFlat) damageFlat += step.damageFlat;
+    if (step.costPct) costPctCut += step.costPct;
+    if (step.costFlat) costFlatCut += step.costFlat;
+    if (step.targets) extraTargets += step.targets;
+    if (step.repeat) repeat += step.repeat;
+    if (step.power) {
+      for (const s in step.power) power[s] = (power[s] || 0) + step.power[s];
+    }
+  }
+
+  return {
+    power,
+    maxTargets: (skill.maxTargets || 1) + extraTargets,
+    damageMult,
+    damageFlat,
+    costPctCut,
+    costFlatCut,
+    repeat,
+  };
 }
 
-// Damage multiplier for a skill at a given level (1× at Lv 1, growing by the
-// skill's per-level rate). Falls back to the module default when unset.
-function skillLevelMultiplier(skill, level) {
-  const per = skill.damagePerLevel != null ? skill.damagePerLevel : SKILL_DAMAGE_PER_LEVEL;
-  return 1 + per * (Math.max(1, level) - 1);
+// Resolve a skill's MP cost for a caster with max MP `maxMp` at `level`, after
+// its level's cost reductions. Rounds up so a percent cost never becomes free
+// by rounding, and never drops below 0.
+function skillCost(skill, maxMp, level) {
+  const c = skill.cost;
+  let cost = c.type === "percent" ? (maxMp * c.amount) / 100 : c.amount;
+  const eff = effectiveSkill(skill, level);
+  cost = cost * (1 - eff.costPctCut) - eff.costFlatCut;
+  return Math.max(0, Math.ceil(cost));
 }
 
 // Base damage a skill deals for a caster with the given effective stats at the
-// given skill level, before DEF, crit, and evasion. Weighted stat sum × level.
+// given skill level, before DEF, crit, and evasion: the (leveled) weighted stat
+// sum, scaled by the level's damage multiplier, plus any flat damage.
 function skillDamage(stats, skill, level) {
+  const eff = effectiveSkill(skill, level);
   let dmg = 0;
-  for (const stat in skill.power) {
-    dmg += (stats[stat] || 0) * skill.power[stat];
+  for (const stat in eff.power) {
+    dmg += (stats[stat] || 0) * eff.power[stat];
   }
-  return dmg * skillLevelMultiplier(skill, level);
+  return dmg * eff.damageMult + eff.damageFlat;
+}
+
+// How many enemies the skill hits at `level` (base targets + level bonuses).
+function skillMaxTargets(skill, level) {
+  return effectiveSkill(skill, level).maxTargets;
+}
+
+// How many *extra* times the skill fires after its first cast at `level`.
+function skillRepeat(skill, level) {
+  return effectiveSkill(skill, level).repeat;
 }
 
 // Does this skill bypass the target's DEF? (The one effect wired up so far.)

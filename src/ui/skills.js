@@ -38,10 +38,11 @@ function setStrategy(value) {
 
 // --- Rendering -----------------------------------------------------------
 
-// Human-readable MP cost, e.g. "20 MP" or "10% MP".
-function skillCostLabel(skill) {
-  const c = skill.cost;
-  return c.type === "percent" ? `${c.amount}% MP` : `${c.amount} MP`;
+// The concrete MP cost for this adventurer at the skill's current level (Lv 1
+// if not yet learned), after any per-level cost reductions.
+function skillCostLabel(adventurer, skill) {
+  const level = Math.max(1, skillLevel(adventurer, skill.id));
+  return `${skillCost(skill, maxMp(adventurer), level)} MP`;
 }
 
 // The header row: skill-point balance and the Lowest/Highest strategy toggle.
@@ -94,7 +95,7 @@ function skillCard(adventurer, skill) {
 
   const cost = document.createElement("span");
   cost.className = "skill-cost";
-  cost.textContent = skillCostLabel(skill);
+  cost.textContent = skillCostLabel(adventurer, skill);
 
   head.append(name, cost);
 
