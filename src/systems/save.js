@@ -28,8 +28,10 @@ function applySave(data) {
     if (field in data) state[field] = data[field];
   }
   // Saves from before persistent HP won't carry an `hp`; start those at full.
+  // Saves from before skills won't carry a `skills` list; start those empty.
   state.adventurers.forEach((a) => {
     if (typeof a.hp !== "number") a.hp = maxHp(a);
+    if (!Array.isArray(a.skills)) a.skills = [];
   });
   if (!state.adventurers.some((a) => a.id === state.selectedId)) {
     state.selectedId = state.adventurers.length ? state.adventurers[0].id : null;

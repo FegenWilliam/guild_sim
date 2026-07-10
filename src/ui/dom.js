@@ -30,6 +30,8 @@ const equipmentEl = document.getElementById("equipment");
 const inventoryPanelEl = document.getElementById("inventoryPanel");
 const inventoryEl = document.getElementById("inventory");
 const invUnlockedEl = document.getElementById("invUnlocked");
+const skillsPanelEl = document.getElementById("skillsPanel");
+const skillsEl = document.getElementById("skills");
 const tabButtons = document.querySelectorAll(".tab");
 const emptyHintEl = document.getElementById("emptyHint");
 
@@ -38,6 +40,7 @@ const TAB_PANELS = {
   stats: statsEl,
   equipment: equipmentEl,
   inventory: inventoryPanelEl,
+  skills: skillsPanelEl,
 };
 
 // Class picker modal.

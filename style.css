@@ -489,6 +489,109 @@ h1 {
   font-style: italic;
 }
 
+/* --- Skills --- */
+
+.skills {
+  display: flex;
+  flex-direction: column;
+}
+
+.skill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.skill-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.7rem 0.9rem;
+  background: #1a1723;
+  border: 1px solid #3a3150;
+  border-radius: 0.6rem;
+}
+
+.skill-card.learned {
+  border-color: #4caf7d;
+}
+
+/* A skill still gated by an unlearned prerequisite reads as dimmed. */
+.skill-card.locked {
+  opacity: 0.6;
+}
+
+.skill-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.skill-name {
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #f4e9ff;
+}
+
+.skill-cost {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #8fb8ff;
+  flex-shrink: 0;
+}
+
+.skill-desc {
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: #b9aed6;
+}
+
+.skill-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 1.9rem;
+}
+
+.skill-learn {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 0.4rem 1rem;
+  color: #f4e9ff;
+  background: #372c52;
+  border: 1px solid #d9b3ff;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.skill-learn:hover {
+  background: #4a3a6e;
+}
+
+.skill-learn:active {
+  background: #2f2843;
+}
+
+.skill-badge {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #7be0a8;
+}
+
+.skill-req {
+  font-size: 0.8rem;
+  font-style: italic;
+  color: #8a819e;
+}
+
+.skill-empty {
+  color: #8a819e;
+  font-style: italic;
+}
+
 /* --- Dungeons --- */
 
 .dungeon-list {
@@ -799,6 +902,12 @@ h1 {
   flex-shrink: 0;
 }
 
+.battle-unit-mp {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #8fb8ff;
+}
+
 .hpbar {
   height: 0.6rem;
   background: #100d18;
@@ -870,6 +979,11 @@ h1 {
 
 .log-line.xp {
   color: #ffd479;
+  font-weight: 700;
+}
+
+.log-line.skill {
+  color: #8fb8ff;
   font-weight: 700;
 }
 

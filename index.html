@@ -72,6 +72,7 @@
         <button id="tabStats" type="button" class="tab active" data-tab="stats" role="tab">Stats</button>
         <button id="tabEquipment" type="button" class="tab" data-tab="equipment" role="tab">Equipment</button>
         <button id="tabInventory" type="button" class="tab" data-tab="inventory" role="tab">Inventory</button>
+        <button id="tabSkills" type="button" class="tab" data-tab="skills" role="tab">Skills</button>
       </div>
 
       <div class="stats" id="stats" role="tabpanel" aria-label="Stats">
@@ -86,6 +87,12 @@
         <p class="inv-caption"><span id="invUnlocked">4</span> / 40 slots</p>
         <div class="inv-grid" id="inventory">
           <!-- inventory cells are rendered here -->
+        </div>
+      </div>
+
+      <div class="skills hidden" id="skillsPanel" role="tabpanel" aria-label="Skills">
+        <div class="skill-list" id="skills">
+          <!-- skill cards are rendered here -->
         </div>
       </div>
     </section>
@@ -179,6 +186,7 @@
   <script src="src/data/items.js"></script>
   <script src="src/data/enemies.js"></script>
   <script src="src/data/dungeons.js"></script>
+  <script src="src/data/skills.js"></script>
   <script src="src/state.js"></script>
   <script src="src/systems/save.js"></script>
   <script src="src/systems/adventurer.js"></script>
@@ -186,6 +194,7 @@
   <script src="src/systems/battle.js"></script>
   <script src="src/ui/dom.js"></script>
   <script src="src/ui/adventurers.js"></script>
+  <script src="src/ui/skills.js"></script>
   <script src="src/ui/dungeons.js"></script>
   <script src="src/ui/battle.js"></script>
   <script src="src/main.js"></script>

@@ -28,6 +28,16 @@ function battleUnitCard(combatant) {
   bar.appendChild(fill);
 
   card.append(head, bar);
+
+  // Party members carry an MP pool that skills spend — show it under the HP bar
+  // so a drain is visible as skills fire. Enemies have no skills, so no MP line.
+  if (combatant.maxMp) {
+    const mp = document.createElement("div");
+    mp.className = "battle-unit-mp";
+    mp.textContent = `MP ${combatant.mp} / ${combatant.maxMp}`;
+    card.appendChild(mp);
+  }
+
   return card;
 }
 

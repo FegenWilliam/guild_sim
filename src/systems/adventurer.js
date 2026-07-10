@@ -14,6 +14,7 @@ function createAdventurer(className) {
     hp: 0,
     equipment: createEquipment(),
     inventory: [], // items indexed by slot; empty for now
+    skills: [], // ids of learned skills (see data/skills.js)
   };
   adventurer.hp = maxHp(adventurer);
   return adventurer;

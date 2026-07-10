@@ -159,6 +159,7 @@ function renderStatsheet() {
   renderStats(selected);
   renderEquipment(selected);
   renderInventory(selected);
+  renderSkills(selected);
   applyTab();
 }
 

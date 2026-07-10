@@ -39,6 +39,11 @@ function partyCombatant(adventurer) {
     side: "party",
     hp: currentHp(adventurer),
     maxHp: s.HP,
+    // MP is a per-battle resource: it opens full and drains as skills fire.
+    // Unlike HP it doesn't persist between runs — a fresh run starts with a
+    // full pool. (Persist it later if grinding needs another brake.)
+    mp: s.MP,
+    maxMp: s.MP,
     atk: s.ATK,
     matk: s.MATK,
     def: s.DEF,
@@ -46,6 +51,10 @@ function partyCombatant(adventurer) {
     critDmg: s["CRIT DMG"],
     eva: s.EVA,
     magic: adventurer.className === "Mage",
+    // The full statline and learned skills ride along so skill damage (which
+    // scales off primaries like DEX/INT) can be computed mid-fight.
+    stats: s,
+    skills: adventurer.skills || [],
     retreatAt: 1,
     status: "active",
   };
@@ -91,18 +100,21 @@ function logLine(text, kind) {
   battle.log.push({ text, kind: kind || "" });
 }
 
-// Resolve a single attack from `attacker` against `target`, mutating the
-// target's HP and status and appending to the battle log.
-function resolveAttack(attacker, target) {
+// Land one hit of `baseDamage` from `attacker` on `target`: roll evasion, apply
+// DEF (unless the hit ignores it), roll a crit, floor at 1, then mutate HP and
+// status and log it. `label` names the source — a skill's name, or "" for a
+// plain attack — so both the basic swing and every skill hit share this path.
+function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" } = {}) {
   if (roll(target.eva)) {
-    logLine(`${target.name} evades ${attacker.name}'s attack!`, "evade");
+    logLine(
+      `${target.name} evades ${attacker.name}${label ? `'s ${label}` : "'s attack"}!`,
+      "evade"
+    );
     return;
   }
 
-  // Mages attack with MATK (ignoring DEF) at half value; everyone else swings
-  // with ATK, reduced by the target's DEF.
-  let dmg = attacker.magic ? attacker.matk * 0.5 : attacker.atk;
-  if (!attacker.magic) dmg -= target.def * 0.5;
+  let dmg = baseDamage;
+  if (!ignoreDef) dmg -= target.def * 0.5;
 
   const crit = roll(attacker.crit);
   if (crit) dmg *= attacker.critDmg / 100;
@@ -111,7 +123,7 @@ function resolveAttack(attacker, target) {
   target.hp -= dmg;
 
   logLine(
-    `${attacker.name} hits ${target.name} for ${dmg}${crit ? " (CRIT!)" : ""}.`,
+    `${attacker.name} ${label ? `${label} hits` : "hits"} ${target.name} for ${dmg}${crit ? " (CRIT!)" : ""}.`,
     attacker.side === "party" ? "party" : "enemy"
   );
 
@@ -123,6 +135,45 @@ function resolveAttack(attacker, target) {
       target.side === "party" ? "retreat" : "defeat"
     );
   }
+}
+
+// Resolve a single basic attack from `attacker` against `target`. Mages swing
+// with half their MATK ignoring DEF; everyone else swings with ATK.
+function resolveAttack(attacker, target) {
+  const base = attacker.magic ? attacker.matk * 0.5 : attacker.atk;
+  dealHit(attacker, target, base, { ignoreDef: attacker.magic });
+}
+
+// Pick a skill for a combatant to use this turn, or null to fall back to a
+// basic attack. Only party members carry skills; we take the first learned
+// skill they can currently afford (learn order = priority).
+function chooseSkill(attacker) {
+  if (attacker.side !== "party" || !attacker.skills || !attacker.skills.length) {
+    return null;
+  }
+  for (const id of attacker.skills) {
+    const skill = skillById(id);
+    if (skill && attacker.mp >= skillCost(skill, attacker.maxMp)) return skill;
+  }
+  return null;
+}
+
+// Resolve a skill: pay its MP, then land its damage on up to `maxTargets` of the
+// still-active foes. Damage scales off the caster's full statline (so DEX/INT
+// skills work); the "ignoreDef" effect makes each hit skip DEF.
+function resolveSkill(attacker, skill, foes) {
+  const targets = foes.filter(isActive).slice(0, skill.maxTargets || 1);
+  if (!targets.length) return;
+
+  const cost = skillCost(skill, attacker.maxMp);
+  attacker.mp = Math.max(0, attacker.mp - cost);
+  logLine(`${attacker.name} uses ${skill.name}! (-${cost} MP)`, "skill");
+
+  const base = skillDamage(attacker.stats, skill);
+  const ignoreDef = skillIgnoresDef(skill);
+  targets.forEach((t) =>
+    dealHit(attacker, t, base, { ignoreDef, label: skill.name })
+  );
 }
 
 // Roll a fresh enemy pack for the current dungeon: each enemy the dungeon lists
@@ -227,8 +278,14 @@ function battleStep() {
 
   if (attacker) {
     const foes = attacker.side === "party" ? battle.enemies : battle.party;
-    const target = foes.find(isActive);
-    if (target) resolveAttack(attacker, target);
+    // Use a skill if one's affordable, otherwise fall back to a basic attack.
+    const skill = chooseSkill(attacker);
+    if (skill) {
+      resolveSkill(attacker, skill, foes);
+    } else {
+      const target = foes.find(isActive);
+      if (target) resolveAttack(attacker, target);
+    }
     syncPartyHp();
     checkBattleEnd();
   }
