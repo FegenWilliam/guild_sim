@@ -137,6 +137,21 @@
     </div>
   </div>
 
-  <script src="game.js"></script>
+  <!-- Loaded as classic scripts sharing one global scope, in dependency
+       order: config → data → state → systems → ui → entry point. -->
+  <script src="src/config.js"></script>
+  <script src="src/data/stats.js"></script>
+  <script src="src/data/classes.js"></script>
+  <script src="src/data/items.js"></script>
+  <script src="src/data/enemies.js"></script>
+  <script src="src/data/dungeons.js"></script>
+  <script src="src/state.js"></script>
+  <script src="src/systems/adventurer.js"></script>
+  <script src="src/systems/battle.js"></script>
+  <script src="src/ui/dom.js"></script>
+  <script src="src/ui/adventurers.js"></script>
+  <script src="src/ui/dungeons.js"></script>
+  <script src="src/ui/battle.js"></script>
+  <script src="src/main.js"></script>
 </body>
 </html>
