@@ -356,7 +356,11 @@ h1 {
 }
 
 .hidden {
-  display: none;
+  /* Utility class: must beat later component rules (e.g. .modal-overlay's
+     own `display: flex`), so it stays authoritative regardless of source
+     order. Without !important the modal overlay renders even when hidden and
+     silently intercepts every click. */
+  display: none !important;
 }
 
 /* --- Class picker modal --- */
