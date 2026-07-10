@@ -9,7 +9,7 @@
 const SAVE_KEY = "guildSim.save";
 const SAVE_VERSION = 1;
 
-const SAVED_FIELDS = ["gold", "maxAdventurers", "adventurers", "selectedId", "nextId"];
+const SAVED_FIELDS = ["gold", "day", "maxAdventurers", "adventurers", "selectedId", "nextId"];
 
 // Snapshot the persistable slice of `state` into a plain, serializable object.
 function serializeSave() {
@@ -27,6 +27,10 @@ function applySave(data) {
   for (const field of SAVED_FIELDS) {
     if (field in data) state[field] = data[field];
   }
+  // Saves from before persistent HP won't carry an `hp`; start those at full.
+  state.adventurers.forEach((a) => {
+    if (typeof a.hp !== "number") a.hp = maxHp(a);
+  });
   if (!state.adventurers.some((a) => a.id === state.selectedId)) {
     state.selectedId = state.adventurers.length ? state.adventurers[0].id : null;
   }

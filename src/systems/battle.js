@@ -29,12 +29,15 @@ function roll(percent) {
 }
 
 // Turn an adventurer into a battle combatant. Party members retreat at 1 HP.
+// They enter at their *current* (persisted) HP, not full — damage carries over
+// from earlier runs until the day is passed.
 function partyCombatant(adventurer) {
   const s = effectiveStats(adventurer);
   return {
+    id: adventurer.id,
     name: displayName(adventurer),
     side: "party",
-    hp: s.HP,
+    hp: currentHp(adventurer),
     maxHp: s.HP,
     atk: s.ATK,
     matk: s.MATK,
@@ -141,6 +144,15 @@ function rollEnemyPack(dungeon) {
   return { enemies, xpPool };
 }
 
+// Copy each party combatant's live HP back onto its adventurer so damage taken
+// in the dungeon persists once the run ends (or the player leaves).
+function syncPartyHp() {
+  for (const c of battle.party) {
+    const adv = state.adventurers.find((a) => a.id === c.id);
+    if (adv) adv.hp = c.hp;
+  }
+}
+
 // Decide what happens after an attack: the run ends when the whole party has
 // retreated, and a cleared wave rolls straight into the next one.
 function checkBattleEnd() {
@@ -154,7 +166,8 @@ function checkBattleEnd() {
 }
 
 // A wave is cleared: award its XP, then send in the next pack. The party's HP
-// and retreat status carry over untouched.
+// and retreat status carry over untouched. Once a dungeon's wave cap is reached
+// the run ends as a clear instead of rolling another pack.
 function advanceWave() {
   const recipients = battle.partyIds
     .map((id) => state.adventurers.find((a) => a.id === id))
@@ -173,9 +186,17 @@ function advanceWave() {
   }
 
   battle.wavesCleared += 1;
-  battle.wave += 1;
 
   const dungeon = getDungeon(state.selectedDungeonId);
+  if (dungeon.maxWaves && battle.wavesCleared >= dungeon.maxWaves) {
+    // Cleared the whole dungeon. The run stops here with HP intact; the player
+    // can re-enter and run it again from wave 1.
+    battle.result = "cleared";
+    logLine(`You cleared all ${dungeon.maxWaves} waves of ${dungeon.name}!`, "wave");
+    return;
+  }
+
+  battle.wave += 1;
   const pack = rollEnemyPack(dungeon);
   battle.enemies = pack.enemies;
   battle.xpPool = pack.xpPool;
@@ -208,11 +229,15 @@ function battleStep() {
     const foes = attacker.side === "party" ? battle.enemies : battle.party;
     const target = foes.find(isActive);
     if (target) resolveAttack(attacker, target);
+    syncPartyHp();
     checkBattleEnd();
   }
 
   renderBattle();
-  if (battle.result) stopBattleTimer();
+  if (battle.result) {
+    stopBattleTimer();
+    saveGame();
+  }
 }
 
 function startBattle() {
@@ -221,6 +246,14 @@ function startBattle() {
 
   if (state.adventurers.length === 0) {
     enterNoteEl.textContent = "You have no adventurers to send in — hire one first.";
+    enterNoteEl.classList.remove("hidden");
+    return;
+  }
+
+  // HP carries over between runs, so a fully worn-down party can't fight. Nudge
+  // the player to pass the day instead of starting a run that ends instantly.
+  if (state.adventurers.every((a) => currentHp(a) <= 1)) {
+    enterNoteEl.textContent = "Your party is too hurt to fight — pass the day to heal.";
     enterNoteEl.classList.remove("hidden");
     return;
   }
@@ -260,7 +293,14 @@ function stopBattleTimer() {
 
 function leaveBattle() {
   stopBattleTimer();
+  if (battle) {
+    // Keep whatever HP the party has left when the player bails mid-run.
+    syncPartyHp();
+    saveGame();
+  }
   battle = null;
   state.dungeonScreen = "detail";
+  // Reflect the party's kept HP in the roster/statsheet.
+  render();
   renderDungeons();
 }

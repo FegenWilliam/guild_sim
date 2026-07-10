@@ -10,6 +10,20 @@ function init() {
 
   hireBtn.addEventListener("click", hireNewbie);
 
+  passDayBtn.addEventListener("click", () => {
+    openConfirm({
+      title: `Pass to Day ${state.day + 1}?`,
+      message: "Your whole party rests and heals to full HP. Any progress in an active run is not affected.",
+      okLabel: "Pass Day",
+      onConfirm: passDay,
+    });
+  });
+  confirmOkBtn.addEventListener("click", acceptConfirm);
+  confirmCancelBtn.addEventListener("click", closeConfirm);
+  confirmModalEl.addEventListener("click", (e) => {
+    if (e.target === confirmModalEl) closeConfirm();
+  });
+
   exportSaveBtn.addEventListener("click", exportSave);
   importSaveBtn.addEventListener("click", () => importFileEl.click());
   importFileEl.addEventListener("change", (e) => {
@@ -51,12 +65,14 @@ function init() {
     }
   });
   document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
     if (
-      e.key === "Escape" &&
       !classModalEl.classList.contains("hidden") &&
       classModalEl.dataset.cancelable === "true"
     ) {
       closeClassPicker();
+    } else if (!confirmModalEl.classList.contains("hidden")) {
+      closeConfirm();
     }
   });
 
