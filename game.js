@@ -71,10 +71,19 @@ const CLASSES = {
 // is scaffolding: slots exist on the model and render as "Empty", ready for an
 // item system to fill them in later.
 //
-// Six slots are active: helmet, chestpiece, leg armor, boots, weapon, and one
-// accessory. A second accessory slot lives in the model but is `locked`, so it
+// Active slots: helmet, chestpiece, leg armor, boots, weapon, one accessory,
+// and a bag. A second accessory slot lives in the model but is `locked`, so it
 // stays hidden until it's unlocked later (e.g. via a guild perk). Rendering
 // skips locked slots; flipping `locked` to false is all it takes to reveal it.
+//
+// Item shape (no item system yet — this documents what a slot will hold):
+//   Gear (everything except the bag) carries stat bonuses — one `main` stat
+//   plus a list of `subs` (substats):
+//     { name: "Iron Helmet", slot: "helmet",
+//       main: { stat: "DEF", value: 8 },
+//       subs: [ { stat: "HP", value: 20 }, { stat: "STR", value: 2 } ] }
+//   A bag carries an inventory-slot bonus only, no stat bonuses:
+//     { name: "Leather Pouch", slot: "bag", inventorySlots: 8 }
 const EQUIPMENT_SLOTS = [
   { id: "helmet", label: "Helmet" },
   { id: "chest", label: "Chestpiece" },
@@ -82,9 +91,14 @@ const EQUIPMENT_SLOTS = [
   { id: "boots", label: "Boots" },
   { id: "weapon", label: "Weapon" },
   { id: "accessory1", label: "Accessory" },
+  { id: "bag", label: "Bag" },
   // Future: second accessory slot, unlocked later. Hidden for now.
   { id: "accessory2", label: "Accessory", locked: true },
 ];
+
+// The bag slot is special: it grants inventory space instead of stat bonuses,
+// so it's excluded from stat math.
+const BAG_SLOT = "bag";
 
 // A fresh, fully-empty equipment map keyed by slot id (locked slots included,
 // so the data is ready the moment a slot is unlocked).
@@ -92,6 +106,38 @@ function createEquipment() {
   const equipment = {};
   for (const slot of EQUIPMENT_SLOTS) equipment[slot.id] = null;
   return equipment;
+}
+
+// --- Inventory -----------------------------------------------------------
+// Every adventurer carries a personal inventory. Without a bag they get
+// BASE_INVENTORY_SLOTS; equipping a bag unlocks its `inventorySlots` bonus on
+// top, up to MAX_INVENTORY_SLOTS. The inventory menu always draws the full
+// MAX grid and locks the slots that aren't unlocked yet.
+const BASE_INVENTORY_SLOTS = 4;
+const MAX_INVENTORY_SLOTS = 40;
+
+// How many inventory slots this adventurer currently has unlocked.
+function inventorySlots(adventurer) {
+  const bag = adventurer.equipment[BAG_SLOT];
+  const bonus = bag ? bag.inventorySlots || 0 : 0;
+  return Math.min(MAX_INVENTORY_SLOTS, BASE_INVENTORY_SLOTS + bonus);
+}
+
+// Flat stat bonuses contributed by all equipped gear (bag excluded). Sums each
+// item's main stat and substats into a { stat: total } map.
+function equipmentBonuses(adventurer) {
+  const totals = {};
+  const add = (stat, value) => {
+    totals[stat] = (totals[stat] || 0) + value;
+  };
+  for (const slot of EQUIPMENT_SLOTS) {
+    if (slot.id === BAG_SLOT) continue;
+    const item = adventurer.equipment[slot.id];
+    if (!item) continue;
+    if (item.main) add(item.main.stat, item.main.value);
+    for (const sub of item.subs || []) add(sub.stat, sub.value);
+  }
+  return totals;
 }
 
 // Resolved base derived stats for a class: defaults with its overrides applied.
@@ -128,8 +174,18 @@ const xpFillEl = document.getElementById("xpFill");
 const xpTextEl = document.getElementById("xpText");
 const statsEl = document.getElementById("stats");
 const equipmentEl = document.getElementById("equipment");
+const inventoryPanelEl = document.getElementById("inventoryPanel");
+const inventoryEl = document.getElementById("inventory");
+const invUnlockedEl = document.getElementById("invUnlocked");
 const tabButtons = document.querySelectorAll(".tab");
 const emptyHintEl = document.getElementById("emptyHint");
+
+// Maps each tab to the panel it shows.
+const TAB_PANELS = {
+  stats: statsEl,
+  equipment: equipmentEl,
+  inventory: inventoryPanelEl,
+};
 const classModalEl = document.getElementById("classModal");
 const classChoicesEl = document.getElementById("classChoices");
 
@@ -143,6 +199,7 @@ function createAdventurer(className) {
     level: 1,
     xp: 0,
     equipment: createEquipment(),
+    inventory: [], // items indexed by slot; empty for now
   };
 }
 
@@ -184,7 +241,7 @@ function effectiveStats(adventurer) {
   const mpPercent = Math.floor(p.INT / 5) * 2;
   mp = Math.round(mp * (1 + mpPercent / 100));
 
-  return {
+  const result = {
     STR: p.STR,
     DEX: p.DEX,
     INT: p.INT,
@@ -197,6 +254,14 @@ function effectiveStats(adventurer) {
     "CRIT DMG": critDmg,
     EVA: eva,
   };
+
+  // Equipped gear adds flat bonuses on top of the class-derived statline.
+  const bonuses = equipmentBonuses(adventurer);
+  for (const stat in bonuses) {
+    if (stat in result) result[stat] += bonuses[stat];
+  }
+
+  return result;
 }
 
 // Grant XP and level up as thresholds are crossed. No XP source is wired up
@@ -344,6 +409,7 @@ function renderStatsheet() {
 
   renderStats(selected);
   renderEquipment(selected);
+  renderInventory(selected);
   applyTab();
 }
 
@@ -391,10 +457,36 @@ function renderEquipment(selected) {
   });
 }
 
+// Draw the full inventory grid: every slot up to MAX_INVENTORY_SLOTS, with the
+// ones past the adventurer's unlocked count shown as locked.
+function renderInventory(selected) {
+  const unlocked = inventorySlots(selected);
+  invUnlockedEl.textContent = unlocked;
+
+  inventoryEl.innerHTML = "";
+  for (let i = 0; i < MAX_INVENTORY_SLOTS; i++) {
+    const cell = document.createElement("div");
+    cell.className = "inv-slot";
+
+    if (i >= unlocked) {
+      cell.classList.add("locked");
+      cell.textContent = "🔒";
+    } else {
+      // No item system yet, so unlocked slots are just empty for now.
+      const item = selected.inventory[i];
+      cell.classList.toggle("empty", !item);
+      cell.textContent = item ? item.name : "";
+    }
+
+    inventoryEl.appendChild(cell);
+  }
+}
+
 // Show the panel for the active tab and highlight its button.
 function applyTab() {
-  statsEl.classList.toggle("hidden", state.activeTab !== "stats");
-  equipmentEl.classList.toggle("hidden", state.activeTab !== "equipment");
+  for (const tab in TAB_PANELS) {
+    TAB_PANELS[tab].classList.toggle("hidden", state.activeTab !== tab);
+  }
   tabButtons.forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.tab === state.activeTab);
   });

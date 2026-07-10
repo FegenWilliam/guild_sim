@@ -305,6 +305,51 @@ h1 {
   font-style: italic;
 }
 
+/* --- Inventory --- */
+
+.inventory {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.inv-caption {
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #b9aed6;
+}
+
+.inv-caption span {
+  color: #ffd479;
+  font-weight: 700;
+}
+
+.inv-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 0.4rem;
+}
+
+.inv-slot {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  background: #1a1723;
+  border: 1px solid #3a3150;
+  border-radius: 0.4rem;
+}
+
+.inv-slot.locked {
+  background: #14111c;
+  border-style: dashed;
+  border-color: #2a2438;
+  color: #4a4360;
+  opacity: 0.7;
+}
+
 .empty-hint {
   color: #8a819e;
   font-style: italic;
