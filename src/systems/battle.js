@@ -187,13 +187,19 @@ function startBattle() {
   }
 
   const party = state.adventurers.map(partyCombatant);
+  // Entering rolls a pack: each enemy the dungeon lists shows up 1–5 times
+  // based on its hidden spawn chances. Every spawned enemy contributes its XP
+  // to the pool, which is split among the party on a win.
   const enemies = [];
   let xpPool = 0;
   dungeon.enemies.forEach((id) => {
     const def = ENEMIES[id];
     if (!def) return;
-    enemies.push(enemyCombatant(def));
-    xpPool += enemyXP(def); // every enemy contributes; the pool is split on a win
+    const count = rollSpawnCount(def);
+    for (let i = 0; i < count; i++) {
+      enemies.push(enemyCombatant(def));
+      xpPool += enemyXP(def);
+    }
   });
   disambiguate(enemies);
 

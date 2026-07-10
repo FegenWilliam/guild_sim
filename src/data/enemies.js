@@ -1,5 +1,22 @@
 // Enemies — the bestiary, keyed by id. Dungeons reference these ids (see
-// dungeons.js). Add an entry here and list its id on a dungeon to use it.
+// dungeons.js).
+//
+// To add an enemy, copy this template into ENEMIES and fill it in:
+//
+//   myEnemy: {
+//     id: "myEnemy",            // must match the key
+//     name: "My Enemy",
+//     stats: { HP: 0, MP: 0, ATK: 0, DEF: 0, CRIT: 0, "CRIT DMG": 100, EVA: 0 },
+//     spawn: { 2: 35, 3: 20, 4: 10, 5: 5 },  // optional, see below
+//   },
+//
+// Then list its id on a dungeon (see dungeons.js). Entering a dungeon always
+// rolls a pack: each listed enemy shows up 1–5 times.
+//
+// `spawn` is a HIDDEN stat (never shown to the player): the percent chance
+// this enemy appears as a group of 2 / 3 / 4 / 5 at once. Leftover percentage
+// is the chance of a lone one; keys you omit are 0%. Omit `spawn` entirely for
+// an enemy that always appears alone.
 
 // Order enemy stats are displayed and copied in.
 const ENEMY_STAT_ORDER = ["HP", "MP", "ATK", "DEF", "CRIT", "CRIT DMG", "EVA"];
@@ -17,6 +34,8 @@ const ENEMIES = {
       "CRIT DMG": 110,  // %
       EVA: 0,           // %
     },
+    // Goblins travel in packs.
+    spawn: { 2: 35, 3: 20, 4: 10, 5: 5 },
   },
 };
 
@@ -39,4 +58,18 @@ function enemyXP(enemy) {
   xp += Math.floor(Math.max(0, s["CRIT DMG"] - 100) / 5) * 0.5;
   xp += s.EVA * 2;
   return xp;
+}
+
+// Roll how many of this enemy spawn at once (1–5), using its hidden `spawn`
+// chances. Higher counts are checked first, so each configured percent is the
+// literal chance of that group size; anything left over spawns a lone enemy.
+function rollSpawnCount(enemy) {
+  const chances = enemy.spawn || {};
+  const r = Math.random() * 100;
+  let cumulative = 0;
+  for (let n = 5; n >= 2; n--) {
+    cumulative += chances[n] || 0;
+    if (r < cumulative) return n;
+  }
+  return 1;
 }

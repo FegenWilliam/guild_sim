@@ -51,6 +51,7 @@ function enemyClipboardText(enemy) {
   for (const stat of ENEMY_STAT_ORDER) {
     lines.push(`${stat}: ${formatValue(stat, enemy.stats[stat])}`);
   }
+  lines.push(`XP: ${formatXP(enemyXP(enemy))}`);
   return lines.join("\n");
 }
 
@@ -154,9 +155,10 @@ function renderEnemyDetail() {
 
   enemyNameEl.textContent = enemy.name;
   enemyStatsEl.innerHTML = "";
-  ENEMY_STAT_ORDER.forEach((label) => {
+
+  const addRow = (label, value, extraClass) => {
     const row = document.createElement("div");
-    row.className = "stat-row";
+    row.className = `stat-row${extraClass ? " " + extraClass : ""}`;
 
     const nameSpan = document.createElement("span");
     nameSpan.className = "stat-label";
@@ -164,9 +166,15 @@ function renderEnemyDetail() {
 
     const valueSpan = document.createElement("span");
     valueSpan.className = "stat-value";
-    valueSpan.textContent = formatValue(label, enemy.stats[label]);
+    valueSpan.textContent = value;
 
     row.append(nameSpan, valueSpan);
     enemyStatsEl.appendChild(row);
+  };
+
+  ENEMY_STAT_ORDER.forEach((label) => {
+    addRow(label, formatValue(label, enemy.stats[label]));
   });
+  // XP this enemy is worth (the hidden spawn stat is deliberately not shown).
+  addRow("XP", formatXP(enemyXP(enemy)), "xp-row");
 }

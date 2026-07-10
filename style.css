@@ -312,6 +312,17 @@ h1 {
   color: #ffd479;
 }
 
+/* XP worth on the enemy stat screen — set apart from the combat stats. */
+.stat-row.xp-row {
+  margin-top: 0.35rem;
+  border: 1px solid #4a4360;
+}
+
+.stat-row.xp-row .stat-label,
+.stat-row.xp-row .stat-value {
+  color: #d9b3ff;
+}
+
 /* --- Equipment slots --- */
 
 .equipment {
