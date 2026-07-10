@@ -15,6 +15,15 @@
       <div class="resource">Adventurers: <span id="count">0</span> / <span id="max">0</span></div>
     </div>
 
+    <!-- Top-level view switcher: the Adventurers menu and the Dungeons menu
+         live side by side, one shown at a time. -->
+    <nav class="viewnav" aria-label="Main menu">
+      <button id="navAdventurers" type="button" class="viewnav-btn active" data-view="adventurers">Adventurers</button>
+      <button id="navDungeons" type="button" class="viewnav-btn" data-view="dungeons">Dungeons</button>
+    </nav>
+
+    <!-- ===== Adventurers view ===== -->
+    <section class="view" id="adventurersView" aria-label="Adventurers">
     <section class="roster" id="roster" aria-label="Roster">
       <!-- adventurer boxes are rendered here -->
     </section>
@@ -61,6 +70,42 @@
     </section>
 
     <p class="empty-hint" id="emptyHint">No adventurer selected — hire one to get started.</p>
+    </section>
+
+    <!-- ===== Dungeons view ===== -->
+    <section class="view hidden" id="dungeonsView" aria-label="Dungeons">
+      <!-- Dungeon list: the picker of available dungeons. -->
+      <div class="dungeon-list" id="dungeonList">
+        <!-- dungeon cards are rendered here -->
+      </div>
+
+      <!-- Dungeon detail: opened by clicking a dungeon. Holds the Enter button
+           and the enemy list, which is the main info on the page. -->
+      <div class="dungeon-detail hidden" id="dungeonDetail">
+        <button id="dungeonBack" type="button" class="back-btn">← Dungeons</button>
+        <div class="dungeon-head">
+          <h2 id="dungeonName">Dungeon</h2>
+          <p class="dungeon-rec" id="dungeonRec">Recommended Lv 1–50</p>
+        </div>
+        <button id="dungeonEnter" type="button" class="enter-btn">Enter</button>
+        <p class="enter-note hidden" id="enterNote"></p>
+        <h3 class="enemy-heading">Enemies</h3>
+        <div class="enemy-list" id="enemyList">
+          <!-- enemy entries are rendered here -->
+        </div>
+      </div>
+
+      <!-- Enemy detail: opened by clicking an enemy. Shows its statline and a
+           button to copy the name + stats. -->
+      <div class="enemy-detail hidden" id="enemyDetail">
+        <button id="enemyBack" type="button" class="back-btn">← Back</button>
+        <h2 id="enemyName">Enemy</h2>
+        <div class="stats" id="enemyStats">
+          <!-- enemy stat rows are rendered here -->
+        </div>
+        <button id="enemyCopy" type="button" class="copy-btn">Copy name &amp; stats</button>
+      </div>
+    </section>
   </main>
 
   <!-- Class picker: shown on every hire. Choice is permanent. -->

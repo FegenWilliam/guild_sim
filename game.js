@@ -150,6 +150,48 @@ function xpToNext(level) {
   return level * 100;
 }
 
+// --- Dungeons & enemies --------------------------------------------------
+// Dungeons are the main gameplay: you send adventurers in and they run an
+// autobattler — a turn-based stat check where each adventurer fights until it
+// drops to 1 HP and then bows out. The battle itself isn't wired up yet; this
+// is the menu scaffolding around it.
+//
+// A dungeon lists the enemies it contains (by id). The enemy list is the main
+// info shown on a dungeon's page, so it's built to grow — add ids to `enemies`
+// and matching entries to ENEMIES and they show up.
+
+// Order enemy stats are displayed and copied in.
+const ENEMY_STAT_ORDER = ["HP", "MP", "ATK", "DEF", "CRIT", "CRIT DMG", "EVA"];
+
+const ENEMIES = {
+  goblin: {
+    id: "goblin",
+    name: "Goblin",
+    stats: {
+      HP: 50,
+      MP: 10,
+      ATK: 10,
+      DEF: 5,
+      CRIT: 0,          // %
+      "CRIT DMG": 110,  // %
+      EVA: 0,           // %
+    },
+  },
+};
+
+const DUNGEONS = [
+  {
+    id: "high-tower",
+    name: "The High Tower",
+    recommendation: "Lv 1–50",
+    enemies: ["goblin"],
+  },
+];
+
+function getDungeon(id) {
+  return DUNGEONS.find((d) => d.id === id) || null;
+}
+
 const state = {
   gold: 1000,
   maxAdventurers: BASE_MAX_ADVENTURERS,
@@ -157,6 +199,14 @@ const state = {
   selectedId: null,
   nextId: 1,
   activeTab: "stats", // "stats" | "equipment"
+  view: "adventurers", // "adventurers" | "dungeons"
+  // Which screen the dungeons view is showing:
+  //   "list"   — pick a dungeon
+  //   "detail" — a dungeon's page (Enter button + enemy list)
+  //   "enemy"  — a single enemy's statline
+  dungeonScreen: "list",
+  selectedDungeonId: null,
+  selectedEnemyId: null,
 };
 
 // --- Elements -------------------------------------------------------------
@@ -188,6 +238,24 @@ const TAB_PANELS = {
 };
 const classModalEl = document.getElementById("classModal");
 const classChoicesEl = document.getElementById("classChoices");
+
+// View switcher + dungeon view.
+const viewNavButtons = document.querySelectorAll(".viewnav-btn");
+const adventurersViewEl = document.getElementById("adventurersView");
+const dungeonsViewEl = document.getElementById("dungeonsView");
+const dungeonListEl = document.getElementById("dungeonList");
+const dungeonDetailEl = document.getElementById("dungeonDetail");
+const dungeonNameEl = document.getElementById("dungeonName");
+const dungeonRecEl = document.getElementById("dungeonRec");
+const dungeonBackBtn = document.getElementById("dungeonBack");
+const dungeonEnterBtn = document.getElementById("dungeonEnter");
+const enterNoteEl = document.getElementById("enterNote");
+const enemyListEl = document.getElementById("enemyList");
+const enemyDetailEl = document.getElementById("enemyDetail");
+const enemyNameEl = document.getElementById("enemyName");
+const enemyStatsEl = document.getElementById("enemyStats");
+const enemyBackBtn = document.getElementById("enemyBack");
+const enemyCopyBtn = document.getElementById("enemyCopy");
 
 // --- Model ---------------------------------------------------------------
 
@@ -509,6 +577,175 @@ function setTab(tab) {
   applyTab();
 }
 
+// --- View switching ------------------------------------------------------
+
+function showView(view) {
+  state.view = view;
+  adventurersViewEl.classList.toggle("hidden", view !== "adventurers");
+  dungeonsViewEl.classList.toggle("hidden", view !== "dungeons");
+  viewNavButtons.forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.view === view);
+  });
+  if (view === "dungeons") renderDungeons();
+}
+
+// --- Dungeon navigation --------------------------------------------------
+
+function openDungeon(id) {
+  state.selectedDungeonId = id;
+  state.dungeonScreen = "detail";
+  renderDungeons();
+}
+
+function backToDungeonList() {
+  state.dungeonScreen = "list";
+  renderDungeons();
+}
+
+function openEnemy(id) {
+  state.selectedEnemyId = id;
+  state.dungeonScreen = "enemy";
+  renderDungeons();
+}
+
+function backToDungeonDetail() {
+  state.dungeonScreen = "detail";
+  renderDungeons();
+}
+
+// The autobattler isn't implemented yet — Enter just acknowledges for now.
+function enterDungeon() {
+  const dungeon = getDungeon(state.selectedDungeonId);
+  if (!dungeon) return;
+  enterNoteEl.textContent = `Entering ${dungeon.name}… (battle coming soon)`;
+  enterNoteEl.classList.remove("hidden");
+}
+
+// Build the plain-text blob copied from an enemy's page: name then one
+// "STAT: value" line per stat, percentages included.
+function enemyClipboardText(enemy) {
+  const lines = [enemy.name];
+  for (const stat of ENEMY_STAT_ORDER) {
+    lines.push(`${stat}: ${formatValue(stat, enemy.stats[stat])}`);
+  }
+  return lines.join("\n");
+}
+
+function copyEnemy() {
+  const enemy = ENEMIES[state.selectedEnemyId];
+  if (!enemy) return;
+  const text = enemyClipboardText(enemy);
+  const done = () => {
+    const original = "Copy name & stats";
+    enemyCopyBtn.textContent = "Copied!";
+    setTimeout(() => {
+      enemyCopyBtn.textContent = original;
+    }, 1200);
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+
+// Clipboard API needs a secure context; fall back to a hidden textarea when
+// it's unavailable (e.g. opened over file://).
+function fallbackCopy(text, done) {
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.select();
+  try {
+    document.execCommand("copy");
+    done();
+  } catch (err) {
+    /* nothing else to try */
+  }
+  document.body.removeChild(area);
+}
+
+// --- Dungeon rendering ---------------------------------------------------
+
+function renderDungeons() {
+  const screen = state.dungeonScreen;
+  dungeonListEl.classList.toggle("hidden", screen !== "list");
+  dungeonDetailEl.classList.toggle("hidden", screen !== "detail");
+  enemyDetailEl.classList.toggle("hidden", screen !== "enemy");
+
+  if (screen === "list") renderDungeonList();
+  else if (screen === "detail") renderDungeonDetail();
+  else if (screen === "enemy") renderEnemyDetail();
+}
+
+function renderDungeonList() {
+  dungeonListEl.innerHTML = "";
+  DUNGEONS.forEach((dungeon) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "dungeon-card";
+
+    const name = document.createElement("span");
+    name.className = "dungeon-card-name";
+    name.textContent = dungeon.name;
+
+    const rec = document.createElement("span");
+    rec.className = "dungeon-card-rec";
+    rec.textContent = `Recommended ${dungeon.recommendation}`;
+
+    card.append(name, rec);
+    card.addEventListener("click", () => openDungeon(dungeon.id));
+    dungeonListEl.appendChild(card);
+  });
+}
+
+function renderDungeonDetail() {
+  const dungeon = getDungeon(state.selectedDungeonId);
+  if (!dungeon) return backToDungeonList();
+
+  dungeonNameEl.textContent = dungeon.name;
+  dungeonRecEl.textContent = `Recommended ${dungeon.recommendation}`;
+  enterNoteEl.classList.add("hidden");
+
+  enemyListEl.innerHTML = "";
+  dungeon.enemies.forEach((enemyId) => {
+    const enemy = ENEMIES[enemyId];
+    if (!enemy) return;
+    const entry = document.createElement("button");
+    entry.type = "button";
+    entry.className = "enemy-entry";
+    entry.textContent = enemy.name;
+    entry.addEventListener("click", () => openEnemy(enemyId));
+    enemyListEl.appendChild(entry);
+  });
+}
+
+function renderEnemyDetail() {
+  const enemy = ENEMIES[state.selectedEnemyId];
+  if (!enemy) return backToDungeonDetail();
+
+  enemyNameEl.textContent = enemy.name;
+  enemyStatsEl.innerHTML = "";
+  ENEMY_STAT_ORDER.forEach((label) => {
+    const row = document.createElement("div");
+    row.className = "stat-row";
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "stat-label";
+    nameSpan.textContent = label;
+
+    const valueSpan = document.createElement("span");
+    valueSpan.className = "stat-value";
+    valueSpan.textContent = formatValue(label, enemy.stats[label]);
+
+    row.append(nameSpan, valueSpan);
+    enemyStatsEl.appendChild(row);
+  });
+}
+
 function render() {
   goldEl.textContent = state.gold;
   countEl.textContent = state.adventurers.length;
@@ -532,6 +769,14 @@ function init() {
   tabButtons.forEach((btn) => {
     btn.addEventListener("click", () => setTab(btn.dataset.tab));
   });
+
+  viewNavButtons.forEach((btn) => {
+    btn.addEventListener("click", () => showView(btn.dataset.view));
+  });
+  dungeonBackBtn.addEventListener("click", backToDungeonList);
+  dungeonEnterBtn.addEventListener("click", enterDungeon);
+  enemyBackBtn.addEventListener("click", backToDungeonDetail);
+  enemyCopyBtn.addEventListener("click", copyEnemy);
 
   // Allow cancelling a hire by clicking the backdrop or pressing Escape.
   classModalEl.addEventListener("click", (e) => {
