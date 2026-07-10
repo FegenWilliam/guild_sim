@@ -149,8 +149,31 @@ function battleStep() {
     checkBattleEnd();
   }
 
+  if (battle.result === "victory") awardVictoryXP();
+
   renderBattle();
   if (battle.result) stopBattleTimer();
+}
+
+// On a win, split the pooled enemy XP evenly among the adventurers who entered
+// and grant it (which may trigger level-ups). Runs once per battle.
+function awardVictoryXP() {
+  if (battle.xpAwarded) return;
+  battle.xpAwarded = true;
+
+  const recipients = battle.partyIds
+    .map((id) => state.adventurers.find((a) => a.id === id))
+    .filter(Boolean);
+  if (recipients.length === 0) return;
+
+  const each = battle.xpPool / recipients.length;
+  recipients.forEach((a) => gainXP(a, each));
+
+  logLine(`Each adventurer gains ${formatXP(each)} XP.`, "xp");
+
+  // Refresh the adventurers view so its statsheet reflects the new XP/level
+  // once the player switches back to it.
+  render();
 }
 
 function startBattle() {
@@ -165,15 +188,24 @@ function startBattle() {
 
   const party = state.adventurers.map(partyCombatant);
   const enemies = [];
+  let xpPool = 0;
   dungeon.enemies.forEach((id) => {
-    if (ENEMIES[id]) enemies.push(enemyCombatant(ENEMIES[id]));
+    const def = ENEMIES[id];
+    if (!def) return;
+    enemies.push(enemyCombatant(def));
+    xpPool += enemyXP(def); // every enemy contributes; the pool is split on a win
   });
   disambiguate(enemies);
 
   battle = {
     dungeonName: dungeon.name,
     party,
+    // Award XP to exactly the adventurers who entered, by id, even if some
+    // retreated by the end.
+    partyIds: state.adventurers.map((a) => a.id),
     enemies,
+    xpPool,
+    xpAwarded: false,
     queue: [],
     round: 0,
     log: [{ text: `You enter ${dungeon.name}.`, kind: "" }],

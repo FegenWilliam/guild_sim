@@ -40,3 +40,9 @@ function formatValue(label, value) {
 function xpToNext(level) {
   return level * 100;
 }
+
+// Trim an XP amount for display: XP comes in fractions (0.05, 0.5, …), so keep
+// at most 2 decimals and drop trailing zeros (e.g. 9.75, 6.5, 12).
+function formatXP(value) {
+  return Number(value.toFixed(2));
+}

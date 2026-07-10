@@ -122,7 +122,7 @@ function renderStatsheet() {
   const needed = xpToNext(selected.level);
   const pct = Math.max(0, Math.min(100, (selected.xp / needed) * 100));
   xpFillEl.style.width = `${pct}%`;
-  xpTextEl.textContent = `${selected.xp} / ${needed} XP`;
+  xpTextEl.textContent = `${formatXP(selected.xp)} / ${needed} XP`;
 
   renderStats(selected);
   renderEquipment(selected);

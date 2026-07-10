@@ -764,6 +764,11 @@ h1 {
   font-weight: 700;
 }
 
+.log-line.xp {
+  color: #ffd479;
+  font-weight: 700;
+}
+
 .hidden {
   /* Utility class: must beat later component rules (e.g. .modal-overlay's
      own `display: flex`), so it stays authoritative regardless of source

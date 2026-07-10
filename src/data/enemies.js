@@ -19,3 +19,24 @@ const ENEMIES = {
     },
   },
 };
+
+// The XP an enemy is worth, derived entirely from its statline:
+//   HP, MP  → 0.05 each
+//   ATK     → 0.2 each
+//   DEF     → 0.1 each
+//   CRIT    → 1 per whole percent (anything below 1% doesn't count)
+//   CRIT DMG→ 0.5 for every full 5% above 100%
+//   EVA     → 2 per percent
+// (e.g. the Goblin is worth 6.5 XP.)
+function enemyXP(enemy) {
+  const s = enemy.stats;
+  let xp = 0;
+  xp += s.HP * 0.05;
+  xp += s.MP * 0.05;
+  xp += s.ATK * 0.2;
+  xp += s.DEF * 0.1;
+  xp += Math.floor(s.CRIT) * 1;
+  xp += Math.floor(Math.max(0, s["CRIT DMG"] - 100) / 5) * 0.5;
+  xp += s.EVA * 2;
+  return xp;
+}
