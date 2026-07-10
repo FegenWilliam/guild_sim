@@ -39,10 +39,9 @@ function partyCombatant(adventurer) {
     side: "party",
     hp: currentHp(adventurer),
     maxHp: s.HP,
-    // MP is a per-battle resource: it opens full and drains as skills fire.
-    // Unlike HP it doesn't persist between runs — a fresh run starts with a
-    // full pool. (Persist it later if grinding needs another brake.)
-    mp: s.MP,
+    // MP carries over between runs just like HP — it enters at its persisted
+    // value and only refills on Pass Day.
+    mp: currentMp(adventurer),
     maxMp: s.MP,
     atk: s.ATK,
     matk: s.MATK,
@@ -51,10 +50,12 @@ function partyCombatant(adventurer) {
     critDmg: s["CRIT DMG"],
     eva: s.EVA,
     magic: adventurer.className === "Mage",
-    // The full statline and learned skills ride along so skill damage (which
-    // scales off primaries like DEX/INT) can be computed mid-fight.
+    // The full statline, learned skills ({ id: level } map), and targeting
+    // preference ride along so the AI can pick and aim skills mid-fight. Skill
+    // damage scales off primaries (DEX/INT) and the skill's level.
     stats: s,
-    skills: adventurer.skills || [],
+    skills: adventurer.skills || {},
+    strategy: adventurer.strategy === "highest" ? "highest" : "lowest",
     retreatAt: 1,
     status: "active",
   };
@@ -144,32 +145,60 @@ function resolveAttack(attacker, target) {
   dealHit(attacker, target, base, { ignoreDef: attacker.magic });
 }
 
-// Pick a skill for a combatant to use this turn, or null to fall back to a
-// basic attack. Only party members carry skills; we take the first learned
-// skill they can currently afford (learn order = priority).
-function chooseSkill(attacker) {
-  if (attacker.side !== "party" || !attacker.skills || !attacker.skills.length) {
-    return null;
-  }
-  for (const id of attacker.skills) {
+// Order the still-active foes by the attacker's targeting strategy: "lowest"
+// puts the weakest-HP foe first (finish them off), "highest" the toughest.
+function orderFoesByStrategy(attacker, foes) {
+  const active = foes.filter(isActive);
+  const dir = attacker.strategy === "highest" ? -1 : 1;
+  return active.sort((a, b) => dir * (a.hp - b.hp) || 0);
+}
+
+// The damage a skill would land on a target *without* a crit or a dodge — the
+// floor the AI uses to decide whether a hit would finish a lone enemy.
+function estimateSkillDamage(attacker, skill, target) {
+  let dmg = skillDamage(attacker.stats, skill, skillLevel(attacker, skill.id));
+  if (!skillIgnoresDef(skill)) dmg -= target.def * 0.5;
+  return Math.max(1, Math.round(dmg));
+}
+
+// Pick a skill for a combatant to use this turn against `foes`, or null to fall
+// back to a basic attack. Only party members carry skills. We take the first
+// learned, affordable, *appropriate* skill in catalog order (starter first):
+// a multi-target skill is only worth casting when 2+ enemies are up, or when it
+// would finish a lone enemy; single-target skills fire whenever affordable.
+function chooseSkill(attacker, foes) {
+  if (attacker.side !== "party" || !attacker.skills) return null;
+
+  const active = foes.filter(isActive);
+  if (!active.length) return null;
+
+  for (const id of SKILL_ORDER) {
+    if (!hasLearned(attacker, id)) continue;
     const skill = skillById(id);
-    if (skill && attacker.mp >= skillCost(skill, attacker.maxMp)) return skill;
+    if (attacker.mp < skillCost(skill, attacker.maxMp)) continue;
+
+    if ((skill.maxTargets || 1) >= 2 && active.length < 2) {
+      // A single foe left: only spend the AoE if it would put them down.
+      const lone = orderFoesByStrategy(attacker, active)[0];
+      if (estimateSkillDamage(attacker, skill, lone) < lone.hp) continue;
+    }
+    return skill;
   }
   return null;
 }
 
-// Resolve a skill: pay its MP, then land its damage on up to `maxTargets` of the
-// still-active foes. Damage scales off the caster's full statline (so DEX/INT
-// skills work); the "ignoreDef" effect makes each hit skip DEF.
+// Resolve a skill: pay its MP, then land its damage on up to `maxTargets` foes,
+// picked by the caster's targeting strategy. Damage scales off the caster's
+// full statline and the skill's level; the "ignoreDef" effect skips DEF.
 function resolveSkill(attacker, skill, foes) {
-  const targets = foes.filter(isActive).slice(0, skill.maxTargets || 1);
+  const targets = orderFoesByStrategy(attacker, foes).slice(0, skill.maxTargets || 1);
   if (!targets.length) return;
 
   const cost = skillCost(skill, attacker.maxMp);
   attacker.mp = Math.max(0, attacker.mp - cost);
   logLine(`${attacker.name} uses ${skill.name}! (-${cost} MP)`, "skill");
 
-  const base = skillDamage(attacker.stats, skill);
+  const base = skillDamage(attacker.stats, skill, skillLevel(attacker, skill.id));
   const ignoreDef = skillIgnoresDef(skill);
   targets.forEach((t) =>
     dealHit(attacker, t, base, { ignoreDef, label: skill.name })
@@ -195,12 +224,16 @@ function rollEnemyPack(dungeon) {
   return { enemies, xpPool };
 }
 
-// Copy each party combatant's live HP back onto its adventurer so damage taken
-// in the dungeon persists once the run ends (or the player leaves).
+// Copy each party combatant's live HP and MP back onto its adventurer so damage
+// taken and MP spent in the dungeon persist once the run ends (or the player
+// leaves).
 function syncPartyHp() {
   for (const c of battle.party) {
     const adv = state.adventurers.find((a) => a.id === c.id);
-    if (adv) adv.hp = c.hp;
+    if (adv) {
+      adv.hp = c.hp;
+      adv.mp = c.mp;
+    }
   }
 }
 
@@ -278,12 +311,16 @@ function battleStep() {
 
   if (attacker) {
     const foes = attacker.side === "party" ? battle.enemies : battle.party;
-    // Use a skill if one's affordable, otherwise fall back to a basic attack.
-    const skill = chooseSkill(attacker);
+    // Use a skill if one's affordable and appropriate, else a basic attack. A
+    // party member aims by its strategy; enemies just hit the first foe up.
+    const skill = chooseSkill(attacker, foes);
     if (skill) {
       resolveSkill(attacker, skill, foes);
     } else {
-      const target = foes.find(isActive);
+      const target =
+        attacker.side === "party"
+          ? orderFoesByStrategy(attacker, foes)[0]
+          : foes.find(isActive);
       if (target) resolveAttack(attacker, target);
     }
     syncPartyHp();

@@ -68,6 +68,10 @@
         <div class="xpbar-fill hp-fill" id="hpFill"></div>
         <span class="xpbar-text" id="hpText">0 / 0 HP</span>
       </div>
+      <div class="xpbar hpbar-wide" aria-label="Mana">
+        <div class="xpbar-fill mp-fill" id="mpFill"></div>
+        <span class="xpbar-text" id="mpText">0 / 0 MP</span>
+      </div>
       <div class="tabs" role="tablist" aria-label="Adventurer detail tabs">
         <button id="tabStats" type="button" class="tab active" data-tab="stats" role="tab">Stats</button>
         <button id="tabEquipment" type="button" class="tab" data-tab="equipment" role="tab">Equipment</button>
@@ -91,8 +95,8 @@
       </div>
 
       <div class="skills hidden" id="skillsPanel" role="tabpanel" aria-label="Skills">
-        <div class="skill-list" id="skills">
-          <!-- skill cards are rendered here -->
+        <div class="skills-body" id="skills">
+          <!-- skill-point header, strategy toggle, and skill cards render here -->
         </div>
       </div>
     </section>

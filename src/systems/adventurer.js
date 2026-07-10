@@ -9,14 +9,24 @@ function createAdventurer(className) {
     className,
     level: 1,
     xp: 0,
-    // Current HP persists between dungeon runs and only refills when the day is
-    // passed. A newbie starts at full.
+    // Current HP and MP persist between dungeon runs and only refill when the
+    // day is passed. A newbie starts at full on both.
     hp: 0,
+    mp: 0,
     equipment: createEquipment(),
     inventory: [], // items indexed by slot; empty for now
-    skills: [], // ids of learned skills (see data/skills.js)
+    // Learned skills as a { skillId: level } map, plus the points spent to grow
+    // it (see data/skills.js). Everyone opens with their class's starter skill
+    // at Lv 1 and no points banked.
+    skills: {},
+    skillPoints: 0,
+    // Battle targeting preference: "lowest" or "highest" enemy HP.
+    strategy: "lowest",
   };
+  const starter = starterSkillForClass(className);
+  if (starter) adventurer.skills[starter.id] = 1;
   adventurer.hp = maxHp(adventurer);
+  adventurer.mp = maxMp(adventurer);
   return adventurer;
 }
 
@@ -25,12 +35,25 @@ function maxHp(adventurer) {
   return effectiveStats(adventurer).HP;
 }
 
+// An adventurer's maximum MP — the MP from their effective statline.
+function maxMp(adventurer) {
+  return effectiveStats(adventurer).MP;
+}
+
 // An adventurer's current HP, clamped to [0, max]. Falls back to full for older
 // saves that predate persistent HP.
 function currentHp(adventurer) {
   const max = maxHp(adventurer);
   if (typeof adventurer.hp !== "number") return max;
   return Math.max(0, Math.min(adventurer.hp, max));
+}
+
+// An adventurer's current MP, clamped to [0, max]. Falls back to full for older
+// saves that predate persistent MP.
+function currentMp(adventurer) {
+  const max = maxMp(adventurer);
+  if (typeof adventurer.mp !== "number") return max;
+  return Math.max(0, Math.min(adventurer.mp, max));
 }
 
 function getSelected() {
@@ -117,5 +140,7 @@ function gainXP(adventurer, amount) {
   while (adventurer.xp >= xpToNext(adventurer.level)) {
     adventurer.xp -= xpToNext(adventurer.level);
     adventurer.level += 1;
+    // Each level earns a skill point to spend on unlocking or leveling a skill.
+    adventurer.skillPoints = (adventurer.skillPoints || 0) + 1;
   }
 }

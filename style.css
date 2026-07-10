@@ -323,6 +323,11 @@ h1 {
   background: linear-gradient(90deg, #4caf7d, #7be0a8);
 }
 
+/* ...and the MP bar reuses it with a mana-colored fill. */
+.mp-fill {
+  background: linear-gradient(90deg, #3f7bd6, #8fb8ff);
+}
+
 .xpbar-text {
   position: absolute;
   inset: 0;
@@ -496,6 +501,71 @@ h1 {
   flex-direction: column;
 }
 
+.skills-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Header row: skill-point balance on the left, strategy toggle on the right. */
+.skills-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.55rem 0.9rem;
+  background: #1a1723;
+  border: 1px solid #3a3150;
+  border-radius: 0.6rem;
+}
+
+.skill-points {
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #b9aed6;
+}
+
+.skill-points span {
+  color: #ffd479;
+  font-weight: 700;
+}
+
+.strategy-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.strategy-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #b9aed6;
+}
+
+.strategy-btn {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.3rem 0.6rem;
+  color: #b9aed6;
+  background: #1a1723;
+  border: 1px solid #3a3150;
+  border-radius: 0.45rem;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.strategy-btn:hover {
+  background: #2f2843;
+  color: #f4e9ff;
+}
+
+.strategy-btn.active {
+  color: #f4e9ff;
+  background: #372c52;
+  border-color: #d9b3ff;
+}
+
 .skill-list {
   display: flex;
   flex-direction: column;
@@ -573,6 +643,12 @@ h1 {
 
 .skill-learn:active {
   background: #2f2843;
+}
+
+.skill-learn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #241f33;
 }
 
 .skill-badge {

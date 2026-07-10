@@ -150,11 +150,17 @@ function renderStatsheet() {
   xpFillEl.style.width = `${pct}%`;
   xpTextEl.textContent = `${formatXP(selected.xp)} / ${needed} XP`;
 
-  // Current HP persists between runs (heals on Pass Day), so surface it here.
+  // Current HP and MP persist between runs (both refill on Pass Day), so
+  // surface them here.
   const hp = currentHp(selected);
   const max = maxHp(selected);
   hpFillEl.style.width = `${Math.max(0, Math.min(100, (hp / max) * 100))}%`;
   hpTextEl.textContent = `${hp} / ${max} HP`;
+
+  const mp = currentMp(selected);
+  const mpMax = maxMp(selected);
+  mpFillEl.style.width = `${Math.max(0, Math.min(100, (mp / mpMax) * 100))}%`;
+  mpTextEl.textContent = `${mp} / ${mpMax} MP`;
 
   renderStats(selected);
   renderEquipment(selected);
