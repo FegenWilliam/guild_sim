@@ -38,15 +38,32 @@
         <div class="xpbar-fill" id="xpFill"></div>
         <span class="xpbar-text" id="xpText">0 / 100 XP</span>
       </div>
-      <div class="stats" id="stats">
+      <div class="tabs" role="tablist" aria-label="Adventurer detail tabs">
+        <button id="tabStats" type="button" class="tab active" data-tab="stats" role="tab">Stats</button>
+        <button id="tabEquipment" type="button" class="tab" data-tab="equipment" role="tab">Equipment</button>
+        <button id="tabInventory" type="button" class="tab" data-tab="inventory" role="tab">Inventory</button>
+      </div>
+
+      <div class="stats" id="stats" role="tabpanel" aria-label="Stats">
         <!-- stat rows are rendered here -->
+      </div>
+
+      <div class="equipment hidden" id="equipment" role="tabpanel" aria-label="Equipment">
+        <!-- equipment slots are rendered here -->
+      </div>
+
+      <div class="inventory hidden" id="inventoryPanel" role="tabpanel" aria-label="Inventory">
+        <p class="inv-caption"><span id="invUnlocked">4</span> / 40 slots</p>
+        <div class="inv-grid" id="inventory">
+          <!-- inventory cells are rendered here -->
+        </div>
       </div>
     </section>
 
     <p class="empty-hint" id="emptyHint">No adventurer selected — hire one to get started.</p>
   </main>
 
-  <!-- Class picker: shown on first launch and every hire. Choice is permanent. -->
+  <!-- Class picker: shown on every hire. Choice is permanent. -->
   <div class="modal-overlay hidden" id="classModal" role="dialog" aria-modal="true" aria-label="Choose a class">
     <div class="modal">
       <h2 id="classModalTitle">Choose a Class</h2>

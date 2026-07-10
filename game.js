@@ -66,6 +66,80 @@ const CLASSES = {
   },
 };
 
+// --- Equipment -----------------------------------------------------------
+// Each adventurer has a set of gear slots. Nothing can be equipped yet — this
+// is scaffolding: slots exist on the model and render as "Empty", ready for an
+// item system to fill them in later.
+//
+// Active slots: helmet, chestpiece, leg armor, boots, weapon, one accessory,
+// and a bag. A second accessory slot lives in the model but is `locked`, so it
+// stays hidden until it's unlocked later (e.g. via a guild perk). Rendering
+// skips locked slots; flipping `locked` to false is all it takes to reveal it.
+//
+// Item shape (no item system yet — this documents what a slot will hold):
+//   Gear (everything except the bag) carries stat bonuses — one `main` stat
+//   plus a list of `subs` (substats):
+//     { name: "Iron Helmet", slot: "helmet",
+//       main: { stat: "DEF", value: 8 },
+//       subs: [ { stat: "HP", value: 20 }, { stat: "STR", value: 2 } ] }
+//   A bag carries an inventory-slot bonus only, no stat bonuses:
+//     { name: "Leather Pouch", slot: "bag", inventorySlots: 8 }
+const EQUIPMENT_SLOTS = [
+  { id: "helmet", label: "Helmet" },
+  { id: "chest", label: "Chestpiece" },
+  { id: "legs", label: "Leg Armor" },
+  { id: "boots", label: "Boots" },
+  { id: "weapon", label: "Weapon" },
+  { id: "accessory1", label: "Accessory" },
+  { id: "bag", label: "Bag" },
+  // Future: second accessory slot, unlocked later. Hidden for now.
+  { id: "accessory2", label: "Accessory", locked: true },
+];
+
+// The bag slot is special: it grants inventory space instead of stat bonuses,
+// so it's excluded from stat math.
+const BAG_SLOT = "bag";
+
+// A fresh, fully-empty equipment map keyed by slot id (locked slots included,
+// so the data is ready the moment a slot is unlocked).
+function createEquipment() {
+  const equipment = {};
+  for (const slot of EQUIPMENT_SLOTS) equipment[slot.id] = null;
+  return equipment;
+}
+
+// --- Inventory -----------------------------------------------------------
+// Every adventurer carries a personal inventory. Without a bag they get
+// BASE_INVENTORY_SLOTS; equipping a bag unlocks its `inventorySlots` bonus on
+// top, up to MAX_INVENTORY_SLOTS. The inventory menu always draws the full
+// MAX grid and locks the slots that aren't unlocked yet.
+const BASE_INVENTORY_SLOTS = 4;
+const MAX_INVENTORY_SLOTS = 40;
+
+// How many inventory slots this adventurer currently has unlocked.
+function inventorySlots(adventurer) {
+  const bag = adventurer.equipment[BAG_SLOT];
+  const bonus = bag ? bag.inventorySlots || 0 : 0;
+  return Math.min(MAX_INVENTORY_SLOTS, BASE_INVENTORY_SLOTS + bonus);
+}
+
+// Flat stat bonuses contributed by all equipped gear (bag excluded). Sums each
+// item's main stat and substats into a { stat: total } map.
+function equipmentBonuses(adventurer) {
+  const totals = {};
+  const add = (stat, value) => {
+    totals[stat] = (totals[stat] || 0) + value;
+  };
+  for (const slot of EQUIPMENT_SLOTS) {
+    if (slot.id === BAG_SLOT) continue;
+    const item = adventurer.equipment[slot.id];
+    if (!item) continue;
+    if (item.main) add(item.main.stat, item.main.value);
+    for (const sub of item.subs || []) add(sub.stat, sub.value);
+  }
+  return totals;
+}
+
 // Resolved base derived stats for a class: defaults with its overrides applied.
 function classBase(className) {
   return { ...DEFAULT_BASE, ...CLASSES[className].base };
@@ -77,11 +151,12 @@ function xpToNext(level) {
 }
 
 const state = {
-  gold: 0,
+  gold: 1000,
   maxAdventurers: BASE_MAX_ADVENTURERS,
   adventurers: [],
   selectedId: null,
   nextId: 1,
+  activeTab: "stats", // "stats" | "equipment"
 };
 
 // --- Elements -------------------------------------------------------------
@@ -98,7 +173,19 @@ const levelEl = document.getElementById("level");
 const xpFillEl = document.getElementById("xpFill");
 const xpTextEl = document.getElementById("xpText");
 const statsEl = document.getElementById("stats");
+const equipmentEl = document.getElementById("equipment");
+const inventoryPanelEl = document.getElementById("inventoryPanel");
+const inventoryEl = document.getElementById("inventory");
+const invUnlockedEl = document.getElementById("invUnlocked");
+const tabButtons = document.querySelectorAll(".tab");
 const emptyHintEl = document.getElementById("emptyHint");
+
+// Maps each tab to the panel it shows.
+const TAB_PANELS = {
+  stats: statsEl,
+  equipment: equipmentEl,
+  inventory: inventoryPanelEl,
+};
 const classModalEl = document.getElementById("classModal");
 const classChoicesEl = document.getElementById("classChoices");
 
@@ -111,6 +198,8 @@ function createAdventurer(className) {
     className,
     level: 1,
     xp: 0,
+    equipment: createEquipment(),
+    inventory: [], // items indexed by slot; empty for now
   };
 }
 
@@ -136,8 +225,17 @@ function primaryStats(adventurer) {
 //   DEX = +4 DEF, +10 Max MP, +0.05% CRIT    | every 5: +0.5% EVA
 //   INT = +25 Max MP, +4 MATK, +1 ATK        | every 5: +2% Max MP (additive)
 function effectiveStats(adventurer) {
-  const p = primaryStats(adventurer);
+  const bonuses = equipmentBonuses(adventurer);
   const b = classBase(adventurer.className);
+
+  // Gear primary bonuses (STR/DEX/INT) fold into the primaries *before* derived
+  // stats are computed, so e.g. a weapon's +2 STR raises HP/ATK/DEF/CRIT DMG
+  // exactly like any other STR would.
+  const base = primaryStats(adventurer);
+  const p = {};
+  for (const stat of PRIMARY_STATS) {
+    p[stat] = base[stat] + (bonuses[stat] || 0);
+  }
 
   let hp = b.HP + p.STR * 5;
   let mp = b.MP + p.DEX * 10 + p.INT * 25;
@@ -152,7 +250,7 @@ function effectiveStats(adventurer) {
   const mpPercent = Math.floor(p.INT / 5) * 2;
   mp = Math.round(mp * (1 + mpPercent / 100));
 
-  return {
+  const result = {
     STR: p.STR,
     DEX: p.DEX,
     INT: p.INT,
@@ -165,6 +263,17 @@ function effectiveStats(adventurer) {
     "CRIT DMG": critDmg,
     EVA: eva,
   };
+
+  // Gear bonuses to derived stats (ATK, CRIT, DEF, ...) add flat on top. The
+  // primaries are already baked into `p` above, so they're skipped here — this
+  // is what lets a weapon grant +2 STR and +10 ATK and have both land: the STR
+  // cascades through the formulas, the ATK stacks on the result.
+  for (const stat in bonuses) {
+    if (PRIMARY_STATS.includes(stat)) continue;
+    if (stat in result) result[stat] += bonuses[stat];
+  }
+
+  return result;
 }
 
 // Grant XP and level up as thresholds are crossed. No XP source is wired up
@@ -287,7 +396,10 @@ function renderStatsheet() {
 
   if (!selected) {
     statsheetEl.classList.add("hidden");
-    emptyHintEl.classList.toggle("hidden", state.adventurers.length > 0);
+    // With no adventurers at all, the game just shows the hire button — no
+    // statsheet and no placeholder hint. The hint is only for the rare case
+    // where a roster exists but nothing is selected.
+    emptyHintEl.classList.toggle("hidden", state.adventurers.length === 0);
     return;
   }
 
@@ -307,6 +419,13 @@ function renderStatsheet() {
   xpFillEl.style.width = `${pct}%`;
   xpTextEl.textContent = `${selected.xp} / ${needed} XP`;
 
+  renderStats(selected);
+  renderEquipment(selected);
+  renderInventory(selected);
+  applyTab();
+}
+
+function renderStats(selected) {
   statsEl.innerHTML = "";
   const stats = effectiveStats(selected);
   DISPLAY_ORDER.forEach((label) => {
@@ -324,6 +443,70 @@ function renderStatsheet() {
     row.append(nameSpan, valueSpan);
     statsEl.appendChild(row);
   });
+}
+
+function renderEquipment(selected) {
+  equipmentEl.innerHTML = "";
+  EQUIPMENT_SLOTS.forEach((slot) => {
+    if (slot.locked) return; // hidden until the slot is unlocked
+
+    const item = selected.equipment[slot.id];
+    const row = document.createElement("div");
+    row.className = "equip-slot";
+    row.classList.toggle("empty", !item);
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "equip-label";
+    nameSpan.textContent = slot.label;
+
+    const valueSpan = document.createElement("span");
+    valueSpan.className = "equip-item";
+    // No item system yet, so every slot reads "Empty" for now.
+    valueSpan.textContent = item ? item.name : "Empty";
+
+    row.append(nameSpan, valueSpan);
+    equipmentEl.appendChild(row);
+  });
+}
+
+// Draw the full inventory grid: every slot up to MAX_INVENTORY_SLOTS, with the
+// ones past the adventurer's unlocked count shown as locked.
+function renderInventory(selected) {
+  const unlocked = inventorySlots(selected);
+  invUnlockedEl.textContent = unlocked;
+
+  inventoryEl.innerHTML = "";
+  for (let i = 0; i < MAX_INVENTORY_SLOTS; i++) {
+    const cell = document.createElement("div");
+    cell.className = "inv-slot";
+
+    if (i >= unlocked) {
+      cell.classList.add("locked");
+      cell.textContent = "🔒";
+    } else {
+      // No item system yet, so unlocked slots are just empty for now.
+      const item = selected.inventory[i];
+      cell.classList.toggle("empty", !item);
+      cell.textContent = item ? item.name : "";
+    }
+
+    inventoryEl.appendChild(cell);
+  }
+}
+
+// Show the panel for the active tab and highlight its button.
+function applyTab() {
+  for (const tab in TAB_PANELS) {
+    TAB_PANELS[tab].classList.toggle("hidden", state.activeTab !== tab);
+  }
+  tabButtons.forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === state.activeTab);
+  });
+}
+
+function setTab(tab) {
+  state.activeTab = tab;
+  applyTab();
 }
 
 function render() {
@@ -346,9 +529,11 @@ function init() {
 
   hireBtn.addEventListener("click", hireNewbie);
   nameEl.addEventListener("input", (e) => renameSelected(e.target.value));
+  tabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => setTab(btn.dataset.tab));
+  });
 
-  // Allow cancelling a hire (but not the mandatory first-newbie pick) by
-  // clicking the backdrop or pressing Escape.
+  // Allow cancelling a hire by clicking the backdrop or pressing Escape.
   classModalEl.addEventListener("click", (e) => {
     if (e.target === classModalEl && classModalEl.dataset.cancelable === "true") {
       closeClassPicker();
@@ -364,15 +549,10 @@ function init() {
     }
   });
 
+  // Player starts with 1000 gold and an empty roster: just the hire button is
+  // shown. Hiring the first newbie triggers class selection and the statsheet
+  // pops up once a roster exists.
   render();
-
-  // Player starts broke, and must choose a class for their first free newbie.
-  openClassPicker((className) => {
-    const starter = createAdventurer(className);
-    state.adventurers.push(starter);
-    state.selectedId = starter.id;
-    render();
-  }, { cancelable: false });
 }
 
 init();
