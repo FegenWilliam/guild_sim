@@ -9,7 +9,7 @@
 const SAVE_KEY = "guildSim.save";
 const SAVE_VERSION = 1;
 
-const SAVED_FIELDS = ["gold", "day", "maxAdventurers", "adventurers", "selectedId", "nextId"];
+const SAVED_FIELDS = ["gold", "day", "maxAdventurers", "adventurers", "enchantStones", "selectedId", "nextId"];
 
 // Snapshot the persistable slice of `state` into a plain, serializable object.
 function serializeSave() {
@@ -27,6 +27,17 @@ function applySave(data) {
   for (const field of SAVED_FIELDS) {
     if (field in data) state[field] = data[field];
   }
+  // Enchantment stones: saves before the enchantment system lack the wallet
+  // entirely, and a newer tier could be missing from an in-between save. Start
+  // from a full zeroed wallet and copy over whatever counts were stored.
+  const stones = emptyEnchantStones();
+  if (data.enchantStones && typeof data.enchantStones === "object") {
+    for (const tier of ENCHANT_TIERS) {
+      const n = data.enchantStones[tier.id];
+      if (typeof n === "number" && n >= 0) stones[tier.id] = n;
+    }
+  }
+  state.enchantStones = stones;
   // Normalize adventurers from older saves, which may predate persistent HP/MP,
   // the skill system, or the switch of `skills` from a list to a level map.
   state.adventurers.forEach((a) => {
@@ -38,6 +49,11 @@ function applySave(data) {
     if (!Array.isArray(a.inventory)) a.inventory = [];
     a.inventory.forEach((item) => {
       if (item && typeof item.locked !== "boolean") item.locked = false;
+      // Equipment always carries EQUIPMENT_MODIFIER_SLOTS modifier slots for
+      // enchantments; backfill any that predate the reserved slots.
+      if (isEquipment(item) && !Array.isArray(item.modifiers)) {
+        item.modifiers = new Array(EQUIPMENT_MODIFIER_SLOTS).fill(null);
+      }
     });
 
     // `skills` used to be an array of learned ids; it's now a { id: level } map.

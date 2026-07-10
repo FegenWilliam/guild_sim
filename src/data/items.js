@@ -65,6 +65,12 @@ function equipmentBonuses(adventurer) {
       if (b.perStat) continue; // scaled bonus — not folded in yet
       totals[b.stat] = (totals[b.stat] || 0) + b.value;
     }
+    // Rolled enchantment modifiers are flat { stat, value } descriptors and
+    // stack on top just like flat gear bonuses.
+    for (const mod of item.modifiers || []) {
+      if (!mod) continue;
+      totals[mod.stat] = (totals[mod.stat] || 0) + mod.value;
+    }
   }
   return totals;
 }

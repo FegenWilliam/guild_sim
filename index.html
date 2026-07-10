@@ -168,6 +168,7 @@
            services (tavern, blacksmith, …) slot in here as buttons. -->
       <nav class="townnav" id="townNav" aria-label="Town services">
         <button type="button" class="townnav-btn active" data-town="shop">Equipment Shop</button>
+        <button type="button" class="townnav-btn" data-town="enchant">Enchanter</button>
       </nav>
 
       <!-- Equipment Shop: a grid of stock, or one item's detail page. -->
@@ -192,6 +193,39 @@
             <button id="shopBuy" type="button" class="buy-btn">Buy</button>
           </div>
           <p class="shop-note hidden" id="shopNote" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+
+      <!-- Enchanter: spend enchantment stones (a counted resource, not
+           inventory) to roll stat modifiers into an equipment's six slots.
+           Works on the adventurer selected in the Adventurers menu. -->
+      <div class="town-service hidden" id="enchantService">
+        <div class="stone-wallet" id="stoneWallet" aria-label="Enchantment stones">
+          <!-- one chip per tier with its count renders here -->
+        </div>
+
+        <!-- Item grid: the selected adventurer's enchantable equipment. -->
+        <div class="enchant-grid" id="enchantGrid">
+          <!-- equipment cards render here -->
+        </div>
+        <p class="enchant-empty hidden" id="enchantEmpty"></p>
+
+        <!-- Item detail: the six modifier slots + a roll button per tier. -->
+        <div class="enchant-detail hidden" id="enchantDetail">
+          <button id="enchantBack" type="button" class="back-btn">← Enchanter</button>
+          <h2 id="enchantItemName">Item</h2>
+          <p class="shop-item-slot" id="enchantItemSlot"></p>
+          <div class="shop-bonuses" id="enchantBonuses">
+            <!-- base bonus rows render here -->
+          </div>
+          <h3 class="modifier-heading">Modifiers — tap a slot, then a stone</h3>
+          <div class="modifier-grid" id="enchantModifiers">
+            <!-- six modifier slots render here -->
+          </div>
+          <div class="enchant-rolls" id="enchantRolls">
+            <!-- one roll button per stone tier renders here -->
+          </div>
+          <p class="shop-note hidden" id="enchantNote" role="status" aria-live="polite"></p>
         </div>
       </div>
     </section>
@@ -230,6 +264,7 @@
   <script src="src/data/enemies.js"></script>
   <script src="src/data/dungeons.js"></script>
   <script src="src/data/skills.js"></script>
+  <script src="src/data/enchantments.js"></script>
   <script src="src/state.js"></script>
   <script src="src/systems/save.js"></script>
   <script src="src/systems/adventurer.js"></script>
@@ -240,6 +275,7 @@
   <script src="src/ui/skills.js"></script>
   <script src="src/ui/dungeons.js"></script>
   <script src="src/ui/town.js"></script>
+  <script src="src/ui/enchant.js"></script>
   <script src="src/ui/battle.js"></script>
   <script src="src/main.js"></script>
 </body>

@@ -81,6 +81,9 @@ function enemyCombatant(enemy) {
     // The loot table rides along so a kill can roll drops without another
     // lookup back into ENEMIES.
     loot: enemy.loot || [],
+    // The XP this enemy is worth also drives its enchantment-stone drop odds,
+    // so cache it once here rather than re-deriving from stats on every kill.
+    xp: enemyXP(enemy),
   };
 }
 
@@ -138,8 +141,12 @@ function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" }
       `${target.name} ${target.side === "party" ? "retreats at 1 HP." : "is defeated!"}`,
       target.side === "party" ? "retreat" : "defeat"
     );
-    // A defeated enemy rolls its loot table into the party's bags.
-    if (target.side === "enemy") awardLoot(target);
+    // A defeated enemy rolls its loot table into the party's bags, then rolls
+    // its enchantment stones into the guild's (uncapped) wallet.
+    if (target.side === "enemy") {
+      awardLoot(target);
+      awardEnchantStones(target);
+    }
   }
 }
 
@@ -158,6 +165,17 @@ function awardLoot(enemyCombatant) {
     } else {
       logLine(`${enemyCombatant.name} dropped ${loot.name}, but the bags are full.`, "loot");
     }
+  }
+}
+
+// Roll a defeated enemy's enchantment stones (odds scale with the XP it's
+// worth) and bank each into the guild-wide wallet. Stones aren't inventory
+// items and have no cap, so a drop can never be lost to a full bag.
+function awardEnchantStones(enemyCombatant) {
+  const drops = rollEnchantDrops(enemyCombatant.xp);
+  for (const tierId of drops) {
+    state.enchantStones[tierId] = (state.enchantStones[tierId] || 0) + 1;
+    logLine(`${enemyCombatant.name} dropped a ${enchantTierById(tierId).name} Enchantment Stone!`, "loot");
   }
 }
 

@@ -20,9 +20,11 @@ function renderTown() {
   townNavButtons.forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.town === state.townService);
   });
-  // Every service's panel hides unless it's the active one. Just the shop today.
+  // Every service's panel hides unless it's the active one.
   shopServiceEl.classList.toggle("hidden", state.townService !== "shop");
+  enchantServiceEl.classList.toggle("hidden", state.townService !== "enchant");
   if (state.townService === "shop") renderShop();
+  else if (state.townService === "enchant") renderEnchant();
 }
 
 // --- Equipment shop navigation -------------------------------------------

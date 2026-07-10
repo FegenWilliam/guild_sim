@@ -1344,6 +1344,149 @@ h1 {
   text-align: center;
 }
 
+/* --- Enchanter --- */
+
+/* Rarity colors, reused by stone chips, filled modifier slots, and roll
+   buttons via [data-tier]. Common → Legendary, cool to warm/gold. */
+[data-tier="common"] { --tier: #9aa0ad; }
+[data-tier="uncommon"] { --tier: #6fd08c; }
+[data-tier="rare"] { --tier: #5aa9ff; }
+[data-tier="epic"] { --tier: #c184ff; }
+[data-tier="legendary"] { --tier: #ffb648; }
+
+/* Stone wallet: a chip row of every tier's count, always shown. */
+.stone-wallet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.stone-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.7rem;
+  background: #1a1723;
+  border: 1px solid var(--tier, #3a3150);
+  border-radius: 999px;
+}
+
+.stone-chip-name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--tier, #b9aed6);
+}
+
+.stone-chip-count {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #f4e9ff;
+}
+
+/* Item grid reuses .shop-card; this only adds the enchanted-count line. */
+.enchant-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+
+.enchant-card-count {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #b9aed6;
+}
+
+.enchant-empty {
+  font-size: 0.95rem;
+  color: #b9aed6;
+  text-align: center;
+  padding: 1.5rem 1rem;
+}
+
+/* Item detail reuses .shop-detail's look. */
+.enchant-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: #221d31;
+  border: 1px solid #3a3150;
+  border-radius: 1rem;
+}
+
+.enchant-detail h2 {
+  font-size: 1.6rem;
+  color: #d9b3ff;
+  letter-spacing: 0.03em;
+}
+
+/* Clickable modifier slots (the shop's are plain divs; these are buttons). */
+button.modifier-slot {
+  font: inherit;
+  cursor: pointer;
+  color: #ece7f5;
+  transition: border-color 0.15s ease, background 0.15s ease,
+    transform 0.08s ease;
+}
+
+button.modifier-slot:hover {
+  background: #2f2843;
+}
+
+button.modifier-slot:active {
+  transform: scale(0.97);
+}
+
+.modifier-slot.filled {
+  border-style: solid;
+  border-color: var(--tier, #3a3150);
+  color: var(--tier, #ece7f5);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.modifier-slot.selected {
+  border-color: #d9b3ff;
+  box-shadow: 0 0 0 1px #d9b3ff inset;
+}
+
+/* Roll buttons: one per tier, tinted by rarity. */
+.enchant-rolls {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+.roll-btn {
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 0.6rem 0.8rem;
+  color: var(--tier, #ece7f5);
+  background: #1a1723;
+  border: 1px solid var(--tier, #3a3150);
+  border-radius: 0.6rem;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.08s ease;
+}
+
+.roll-btn:hover {
+  background: #2f2843;
+}
+
+.roll-btn:active {
+  transform: scale(0.97);
+}
+
+.roll-btn:disabled {
+  color: #6b6382;
+  border-color: #3a3150;
+  background: #17141f;
+  cursor: not-allowed;
+}
+
 .hidden {
   /* Utility class: must beat later component rules (e.g. .modal-overlay's
      own `display: flex`), so it stays authoritative regardless of source
