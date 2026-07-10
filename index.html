@@ -15,6 +15,15 @@
       <div class="resource">Adventurers: <span id="count">0</span> / <span id="max">0</span></div>
     </div>
 
+    <!-- Save controls: progress autosaves to this browser; these move it in
+         and out as a file. -->
+    <div class="savebar">
+      <button id="exportSave" type="button" class="save-btn">Export Save</button>
+      <button id="importSave" type="button" class="save-btn">Import Save</button>
+      <input id="importFile" type="file" accept="application/json,.json" hidden>
+      <span class="save-note" id="saveNote" role="status" aria-live="polite"></span>
+    </div>
+
     <!-- Top-level view switcher: the Adventurers menu and the Dungeons menu
          live side by side, one shown at a time. -->
     <nav class="viewnav" aria-label="Main menu">
@@ -146,6 +155,7 @@
   <script src="src/data/enemies.js"></script>
   <script src="src/data/dungeons.js"></script>
   <script src="src/state.js"></script>
+  <script src="src/systems/save.js"></script>
   <script src="src/systems/adventurer.js"></script>
   <script src="src/systems/battle.js"></script>
   <script src="src/ui/dom.js"></script>

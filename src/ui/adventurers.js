@@ -29,6 +29,8 @@ function renameSelected(newName) {
   // name input keeps focus and caret position while typing.
   const box = rosterEl.querySelector(`[data-id="${selected.id}"]`);
   if (box) box.textContent = displayName(selected);
+  // Renaming skips the full render (to keep the caret), so save explicitly.
+  scheduleSave();
 }
 
 // --- Class picker modal --------------------------------------------------
@@ -226,4 +228,8 @@ function render() {
 
   renderRoster();
   renderStatsheet();
+
+  // Any full render follows a meaningful state change (hire, select, XP gain,
+  // gold spent), so it's the natural place to persist progress.
+  scheduleSave();
 }

@@ -52,6 +52,40 @@ h1 {
   color: #ffd479;
 }
 
+/* --- Save controls --- */
+
+.savebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.save-btn {
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.4rem 0.85rem;
+  color: #b9aed6;
+  background: #1a1723;
+  border: 1px solid #3a3150;
+  border-radius: 0.6rem;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.save-btn:hover {
+  background: #2f2843;
+  color: #f4e9ff;
+  border-color: #6b5a94;
+}
+
+.save-note {
+  font-size: 0.85rem;
+  color: #9fe0c0;
+  min-height: 1.1em;
+}
+
 /* --- View switcher (Adventurers / Dungeons) --- */
 
 .viewnav {
@@ -633,6 +667,12 @@ h1 {
   background: #5a2a34;
 }
 
+.battle-result.over {
+  color: #f0e6ff;
+  background: #3a2f56;
+  border: 1px solid #5a4a86;
+}
+
 .battle-field {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -772,6 +812,11 @@ h1 {
 
 .log-line.retreat {
   color: #d9b3ff;
+  font-weight: 700;
+}
+
+.log-line.wave {
+  color: #ffb37a;
   font-weight: 700;
 }
 

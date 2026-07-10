@@ -43,13 +43,18 @@ function renderBattle() {
   battle.enemies.forEach((c) => battleEnemiesEl.appendChild(battleUnitCard(c)));
 
   if (battle.result) {
+    // The run always ends the same way — the party retreats — so there's a
+    // single "over" banner reporting how many waves they cleared.
+    const cleared = battle.wavesCleared;
     battleResultEl.classList.remove("hidden");
-    battleResultEl.classList.toggle("victory", battle.result === "victory");
-    battleResultEl.classList.toggle("defeat", battle.result === "defeat");
+    battleResultEl.classList.add("over");
     battleResultEl.textContent =
-      battle.result === "victory" ? "Victory!" : "Defeat…";
+      cleared > 0
+        ? `Run over — cleared ${cleared} wave${cleared === 1 ? "" : "s"}!`
+        : "Run over — the party was overwhelmed.";
   } else {
     battleResultEl.classList.add("hidden");
+    battleResultEl.classList.remove("over");
   }
 
   battleLogEl.innerHTML = "";

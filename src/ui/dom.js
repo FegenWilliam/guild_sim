@@ -8,6 +8,12 @@ const maxEl = document.getElementById("max");
 const rosterEl = document.getElementById("roster");
 const hireBtn = document.getElementById("hire");
 
+// Save controls.
+const exportSaveBtn = document.getElementById("exportSave");
+const importSaveBtn = document.getElementById("importSave");
+const importFileEl = document.getElementById("importFile");
+const saveNoteEl = document.getElementById("saveNote");
+
 // Statsheet.
 const statsheetEl = document.getElementById("statsheet");
 const nameEl = document.getElementById("name");

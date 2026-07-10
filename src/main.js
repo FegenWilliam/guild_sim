@@ -3,9 +3,33 @@
 // system and UI module has defined its globals.
 
 function init() {
+  // Restore saved progress before the first render so a refresh keeps the guild.
+  loadGame();
+
   renderClassChoices();
 
   hireBtn.addEventListener("click", hireNewbie);
+
+  exportSaveBtn.addEventListener("click", exportSave);
+  importSaveBtn.addEventListener("click", () => importFileEl.click());
+  importFileEl.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      importSaveFile(file, (ok) => {
+        if (ok) {
+          render();
+          flashSaveNote("Save imported.");
+        } else {
+          flashSaveNote("Import failed — invalid save file.");
+        }
+      });
+    }
+    importFileEl.value = ""; // let the same file be re-imported later
+  });
+
+  // Belt-and-suspenders: flush a save when the tab is closing, in case a
+  // debounced save is still pending.
+  window.addEventListener("beforeunload", saveGame);
   nameEl.addEventListener("input", (e) => renameSelected(e.target.value));
   tabButtons.forEach((btn) => {
     btn.addEventListener("click", () => setTab(btn.dataset.tab));
