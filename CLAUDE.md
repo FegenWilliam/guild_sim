@@ -26,13 +26,18 @@ One mutable global `state` object (`src/state.js`) is the single source of
 truth. **Systems** mutate it; **UI** renders from it. Data flows one way:
 act → mutate `state` → call a render function.
 
-The three render entry points:
+The render entry points:
 - `render()` (`ui/adventurers.js`) — the Adventurers view (topbar, roster,
-  statsheet). Call this after any change to gold/day/roster/HP/XP.
+  statsheet). Call this after any change to gold/day/roster/HP/XP/inventory.
 - `renderDungeons()` (`ui/dungeons.js`) — the Dungeons view; dispatches to the
   list / detail / enemy / battle sub-screens based on `state.dungeonScreen`.
+- `renderTown()` (`ui/town.js`) — the Town view; dispatches to a service based
+  on `state.townService` (only the Equipment Shop exists so far).
 - `renderBattle()` (`ui/battle.js`) — the active battle, driven by the `battle`
   global (not `state`).
+
+Top-level view switching is `showView(view)` in `ui/dungeons.js`, toggling the
+Adventurers / Dungeons / Town sections on `state.view`.
 
 `render()` ends by calling `scheduleSave()`, so most state changes autosave for
 free. The two paths that *don't* go through `render()` — renaming (skips render
@@ -46,10 +51,11 @@ to keep the caret) and battle ticks — save explicitly.
   `formatXP`. XP is fractional; display helpers trim to 2 decimals.
 - `src/data/classes.js` — `CLASSES` (Warrior/Ranger/Mage): per-level primary
   gains + base derived-stat overrides.
-- `src/data/items.js` — equipment slots + inventory. **Scaffolding only** — no
-  item system is wired up yet; everything renders as "Empty".
+- `src/data/items.js` — equipment slots, inventory helpers, the two item kinds
+  (Loot / Equipment), and the shop catalog. See "Item system" below.
 - `src/data/enemies.js` — `ENEMIES` bestiary, `enemyXP` (XP derived from
-  statline), `rollSpawnCount` (hidden `spawn` chances → 1–5 per pack).
+  statline), `rollSpawnCount` (hidden `spawn` chances → 1–5 per pack), and
+  `rollLoot(table)` (per-kill drop rolls). Each enemy can carry a `loot` table.
 - `src/data/dungeons.js` — `DUNGEONS`. A dungeon lists enemy ids and an optional
   `maxWaves` cap. Currently just The High Tower (goblins, 100-wave cap).
 
@@ -77,6 +83,8 @@ to keep the caret) and battle ticks — save explicitly.
   top-level `render()`.
 - `src/ui/dungeons.js` — view switching (`showView`), dungeon navigation, the
   copy-enemy helper, `renderDungeons()`.
+- `src/ui/town.js` — the Town view: service switcher and the Equipment Shop
+  (grid → item detail, Buy). `renderTown()` / `renderShop()`.
 - `src/ui/battle.js` — `renderBattle()`: party/enemy cards, result banner, log.
 - `src/main.js` — `init()`: `loadGame()`, wires all event listeners, first
   render. Runs immediately at load.
@@ -105,8 +113,36 @@ Primaries (STR/DEX/INT) drive everything. A class grants a fixed amount of each
 primary per level; every derived stat (HP, ATK, DEF, CRIT, …) is computed from
 the primaries in `effectiveStats`. Gear primaries fold in *before* derived stats
 are computed (so +STR cascades into HP/ATK/…); gear bonuses to derived stats
-stack flat on top afterward. There's no item system yet, so gear bonuses are all
-zero in practice.
+stack flat on top afterward. Nothing can be *equipped* through the UI yet, so
+`effectiveStats` reads empty gear in practice — but the plumbing
+(`equipmentBonuses`) is live for when wearing gear is wired up.
+
+## Item system
+
+Two item kinds fill inventory slots, both tagged by `type` (see `data/items.js`):
+
+- **Loot** — `{ type: "loot", name, price, locked }`. What enemies drop; its
+  only use is being sold. An enemy carries a `loot` drop table (array of
+  `{ name, chance, price }`); `rollLoot` rolls each entry independently per kill.
+  On a kill, `systems/battle.js` (`awardLoot`) stashes each drop in the first
+  party member with a free bag slot — a full bag logs the loss.
+- **Equipment** — `{ type: "equipment", equipId, name, slot, bonuses,
+  modifiers, locked }`. Bought in the shop. `bonuses` is a list of descriptors,
+  each flat (`{ stat, value }`) or scaled (`{ stat, perStat, mult }`, e.g. the
+  Crossbow's +2× DEX). Only flat bonuses fold into a statline today; scaled ones
+  await equip-time math. `modifiers` is six reserved slots (`EQUIPMENT_MODIFIER_
+  SLOTS`) kept empty for the upcoming enchantment feature.
+
+Inventory (per-adventurer, a dense array; `addToInventory`/`inventoryHasSpace`)
+lives on the statsheet's Inventory tab. **Sell All Loot** (`sellAllLoot`) sells
+every *unlocked* loot item across the whole guild; **double-clicking a slot**
+toggles that item's `locked` flag, protecting it from the sale. Inventory rides
+along in `adventurers`, so it's already persisted — no `SAVED_FIELDS` change.
+
+The **Equipment Shop** (Town view) sells from `SHOP_EQUIPMENT`; buying mints a
+fresh instance (`createEquipmentItem`) into the *selected* adventurer's bag and
+spends `state.gold`. To add stock, append to `SHOP_EQUIPMENT`; to add a droppable
+item, add a `loot` entry on an enemy. Both are pure data.
 
 ## Conventions
 
