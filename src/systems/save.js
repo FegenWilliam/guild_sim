@@ -33,6 +33,13 @@ function applySave(data) {
     if (typeof a.hp !== "number") a.hp = maxHp(a);
     if (typeof a.mp !== "number") a.mp = maxMp(a);
 
+    // Inventory now holds loot/equipment items; older saves left it empty.
+    // Guard the shape and default `locked` on any item that predates it.
+    if (!Array.isArray(a.inventory)) a.inventory = [];
+    a.inventory.forEach((item) => {
+      if (item && typeof item.locked !== "boolean") item.locked = false;
+    });
+
     // `skills` used to be an array of learned ids; it's now a { id: level } map.
     // Migrate an old array (each learned skill starts at Lv 1) and coerce
     // anything unexpected to an empty map.

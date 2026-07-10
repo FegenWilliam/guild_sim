@@ -26,13 +26,18 @@ One mutable global `state` object (`src/state.js`) is the single source of
 truth. **Systems** mutate it; **UI** renders from it. Data flows one way:
 act → mutate `state` → call a render function.
 
-The three render entry points:
+The render entry points:
 - `render()` (`ui/adventurers.js`) — the Adventurers view (topbar, roster,
-  statsheet). Call this after any change to gold/day/roster/HP/XP.
+  statsheet). Call this after any change to gold/day/roster/HP/XP/inventory.
 - `renderDungeons()` (`ui/dungeons.js`) — the Dungeons view; dispatches to the
   list / detail / enemy / battle sub-screens based on `state.dungeonScreen`.
+- `renderTown()` (`ui/town.js`) — the Town view; dispatches to a service based
+  on `state.townService` (only the Equipment Shop exists so far).
 - `renderBattle()` (`ui/battle.js`) — the active battle, driven by the `battle`
   global (not `state`).
+
+Top-level view switching is `showView(view)` in `ui/dungeons.js`, toggling the
+Adventurers / Dungeons / Town sections on `state.view`.
 
 `render()` ends by calling `scheduleSave()`, so most state changes autosave for
 free. The two paths that *don't* go through `render()` — renaming (skips render
@@ -46,23 +51,30 @@ to keep the caret) and battle ticks — save explicitly.
   `formatXP`. XP is fractional; display helpers trim to 2 decimals.
 - `src/data/classes.js` — `CLASSES` (Warrior/Ranger/Mage): per-level primary
   gains + base derived-stat overrides.
-- `src/data/items.js` — equipment slots + inventory. **Scaffolding only** — no
-  item system is wired up yet; everything renders as "Empty".
+- `src/data/items.js` — equipment slots, inventory helpers, the two item kinds
+  (Loot / Equipment), and the shop catalog. See "Item system" below.
 - `src/data/enemies.js` — `ENEMIES` bestiary, `enemyXP` (XP derived from
-  statline), `rollSpawnCount` (hidden `spawn` chances → 1–5 per pack).
+  statline), `rollSpawnCount` (hidden `spawn` chances → 1–5 per pack), and
+  `rollLoot(table)` (per-kill drop rolls). Each enemy can carry a `loot` table.
 - `src/data/dungeons.js` — `DUNGEONS`. A dungeon lists enemy ids and an optional
   `maxWaves` cap. Currently just The High Tower (goblins, 100-wave cap).
+- `src/data/skills.js` — `SKILLS` catalog + pure helpers. Per-class skills, a
+  `{ skillId: level }` learning model, per-level scaling (`effectiveSkill`), MP
+  cost, target count, repeat, and effect flags. See "Skill system" below.
 
 **State + systems** (mutate `state`, no DOM except where noted):
 - `src/state.js` — the `state` object. Gameplay fields + transient UI fields
   (`view`, `dungeonScreen`, selections).
 - `src/systems/adventurer.js` — the adventurer model. `createAdventurer`,
   `effectiveStats` (the full derived statline from class+level+gear),
-  `gainXP`/leveling, and HP helpers `maxHp` / `currentHp`.
+  `gainXP`/leveling (each level grants a skill point), and the HP/MP helpers
+  `maxHp`/`currentHp`/`maxMp`/`currentMp`. An adventurer also carries a `skills`
+  (`{ id: level }`) map, `skillPoints`, and a targeting `strategy`.
 - `src/systems/save.js` — localStorage persistence + file export/import.
   `SAVED_FIELDS` lists what's persisted; `applySave` normalizes older saves
-  (e.g. defaults missing HP to full). `saveGame`/`loadGame`/`scheduleSave`
-  (debounced), `exportSave` (downloads JSON), `importSaveFile`.
+  (defaults missing HP/MP, migrates the old skills array → `{ id: level }` map,
+  backfills `skillPoints`/`strategy`/inventory `locked`). `saveGame`/`loadGame`/
+  `scheduleSave` (debounced), `exportSave` (downloads JSON), `importSaveFile`.
 - `src/systems/day.js` — the day counter. `passDay()` heals the whole party to
   full and advances `state.day`. Player-driven via the Pass Day button.
 - `src/systems/battle.js` — the autobattler. Owns the `battle` global (the
@@ -73,10 +85,14 @@ to keep the caret) and battle ticks — save explicitly.
 - `src/ui/dom.js` — every `getElementById` resolved once into a `const`. Add new
   elements' refs here.
 - `src/ui/adventurers.js` — roster, statsheet, class-picker modal, the generic
-  confirm modal (`openConfirm`/`acceptConfirm`/`closeConfirm`), and the
-  top-level `render()`.
+  confirm modal (`openConfirm`/`acceptConfirm`/`closeConfirm`), the inventory
+  (loot/equipment cells, lock, `sellAllLoot`), and the top-level `render()`.
+- `src/ui/skills.js` — the Skills tab: skill-point balance, the Lowest/Highest
+  targeting toggle, and skill cards (unlock / level up). `renderSkills()`.
 - `src/ui/dungeons.js` — view switching (`showView`), dungeon navigation, the
   copy-enemy helper, `renderDungeons()`.
+- `src/ui/town.js` — the Town view: service switcher and the Equipment Shop
+  (grid → item detail, Buy). `renderTown()` / `renderShop()`.
 - `src/ui/battle.js` — `renderBattle()`: party/enemy cards, result banner, log.
 - `src/main.js` — `init()`: `loadGame()`, wires all event listeners, first
   render. Runs immediately at load.
@@ -95,9 +111,16 @@ to keep the caret) and battle ticks — save explicitly.
   in `ui/battle.js` branches on `battle.result`.
 - `BATTLE_STEP_MS` (currently 90ms) paces playback. Combat math is documented in
   the file header (ATK vs DEF, MATK ignores DEF at 50%, CRIT, EVA).
-- **Persistent HP**: current HP lives on the adventurer (`a.hp`) and survives
-  between runs; it only refills on Pass Day. Entering starts the party at
-  `currentHp`, not full. This is the deliberate brake on grinding dungeons.
+- Party combatants carry their learned skills and an MP pool; each turn
+  `chooseSkill` picks an affordable, appropriate skill (else a basic attack) and
+  `resolveSkill` pays its MP and fires it, aimed by the adventurer's `strategy`.
+  Enemies have no skills. Skill math lives in `data/skills.js`; see "Skill
+  system". A defeated enemy also rolls its `loot` (`awardLoot`); see "Item
+  system".
+- **Persistent HP/MP**: current HP and MP live on the adventurer (`a.hp`/`a.mp`)
+  and survive between runs; both only refill on Pass Day. Entering starts the
+  party at `currentHp`/`currentMp`, not full. This is the deliberate brake on
+  grinding dungeons.
 
 ## Stat system
 
@@ -105,8 +128,55 @@ Primaries (STR/DEX/INT) drive everything. A class grants a fixed amount of each
 primary per level; every derived stat (HP, ATK, DEF, CRIT, …) is computed from
 the primaries in `effectiveStats`. Gear primaries fold in *before* derived stats
 are computed (so +STR cascades into HP/ATK/…); gear bonuses to derived stats
-stack flat on top afterward. There's no item system yet, so gear bonuses are all
-zero in practice.
+stack flat on top afterward. Nothing can be *equipped* through the UI yet, so
+`effectiveStats` reads empty gear in practice — but the plumbing
+(`equipmentBonuses`) is live for when wearing gear is wired up.
+
+## Skill system
+
+Each adventurer owns skills as a `{ skillId: level }` map (`data/skills.js`). A
+class opens with its starter skill at Lv 1; leveling earns +1 skill point per
+character level (`gainXP`), spent to unlock a new skill or raise a learned one to
+`SKILL_LEVEL_CAP`. An unlock can gate on a prerequisite skill (and level).
+
+`data/skills.js` is pure data + pure helpers — the one place scaling lives.
+`effectiveSkill(skill, level)` collapses a skill's base params plus its
+`levelUps` steps into concrete damage / cost / targets / repeat; `skillDamage`,
+`skillCost`, `skillMaxTargets`, `skillRepeat` read it. Damage is a weighted stat
+sum (`power`, e.g. `{ INT: 2, MATK: 1 }`), and `effects` is an open list of flags
+that change resolution — only `"ignoreDef"` is wired into combat so far. The
+file header documents the full skill shape; adding a skill = one `SKILLS` entry.
+
+The mutation (learn / level up) lives in `ui/skills.js`; using a skill in a fight
+lives in `systems/battle.js` (`chooseSkill` → `resolveSkill`). A party member's
+`strategy` ("lowest" | "highest" enemy HP) aims both basic attacks and skills.
+
+## Item system
+
+Two item kinds fill inventory slots, both tagged by `type` (see `data/items.js`):
+
+- **Loot** — `{ type: "loot", name, price, locked }`. What enemies drop; its
+  only use is being sold. An enemy carries a `loot` drop table (array of
+  `{ name, chance, price }`); `rollLoot` rolls each entry independently per kill.
+  On a kill, `systems/battle.js` (`awardLoot`) stashes each drop in the first
+  party member with a free bag slot — a full bag logs the loss.
+- **Equipment** — `{ type: "equipment", equipId, name, slot, bonuses,
+  modifiers, locked }`. Bought in the shop. `bonuses` is a list of descriptors,
+  each flat (`{ stat, value }`) or scaled (`{ stat, perStat, mult }`, e.g. the
+  Crossbow's +2× DEX). Only flat bonuses fold into a statline today; scaled ones
+  await equip-time math. `modifiers` is six reserved slots (`EQUIPMENT_MODIFIER_
+  SLOTS`) kept empty for the upcoming enchantment feature.
+
+Inventory (per-adventurer, a dense array; `addToInventory`/`inventoryHasSpace`)
+lives on the statsheet's Inventory tab. **Sell All Loot** (`sellAllLoot`) sells
+every *unlocked* loot item across the whole guild; **double-clicking a slot**
+toggles that item's `locked` flag, protecting it from the sale. Inventory rides
+along in `adventurers`, so it's already persisted — no `SAVED_FIELDS` change.
+
+The **Equipment Shop** (Town view) sells from `SHOP_EQUIPMENT`; buying mints a
+fresh instance (`createEquipmentItem`) into the *selected* adventurer's bag and
+spends `state.gold`. To add stock, append to `SHOP_EQUIPMENT`; to add a droppable
+item, add a `loot` entry on an enemy. Both are pure data.
 
 ## Conventions
 

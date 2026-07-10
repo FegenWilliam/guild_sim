@@ -37,6 +37,7 @@
     <nav class="viewnav" aria-label="Main menu">
       <button id="navAdventurers" type="button" class="viewnav-btn active" data-view="adventurers">Adventurers</button>
       <button id="navDungeons" type="button" class="viewnav-btn" data-view="dungeons">Dungeons</button>
+      <button id="navTown" type="button" class="viewnav-btn" data-view="town">Town</button>
     </nav>
 
     <!-- ===== Adventurers view ===== -->
@@ -88,7 +89,11 @@
       </div>
 
       <div class="inventory hidden" id="inventoryPanel" role="tabpanel" aria-label="Inventory">
-        <p class="inv-caption"><span id="invUnlocked">4</span> / 40 slots</p>
+        <div class="inv-actions">
+          <p class="inv-caption"><span id="invUnlocked">4</span> / 40 slots</p>
+          <button id="sellLoot" type="button" class="sell-loot-btn">Sell All Loot</button>
+        </div>
+        <p class="inv-hint">Double-click an item to lock it (locked loot won't be sold).</p>
         <div class="inv-grid" id="inventory">
           <!-- inventory cells are rendered here -->
         </div>
@@ -156,6 +161,40 @@
         <div class="battle-log" id="battleLog" aria-label="Battle log"></div>
       </div>
     </section>
+
+    <!-- ===== Town view ===== -->
+    <section class="view hidden" id="townView" aria-label="Town">
+      <!-- Service switcher. Only the Equipment Shop exists so far; more town
+           services (tavern, blacksmith, …) slot in here as buttons. -->
+      <nav class="townnav" id="townNav" aria-label="Town services">
+        <button type="button" class="townnav-btn active" data-town="shop">Equipment Shop</button>
+      </nav>
+
+      <!-- Equipment Shop: a grid of stock, or one item's detail page. -->
+      <div class="town-service" id="shopService">
+        <div class="shop-grid" id="shopGrid">
+          <!-- shop item cards are rendered here -->
+        </div>
+
+        <div class="shop-detail hidden" id="shopDetail">
+          <button id="shopBack" type="button" class="back-btn">← Shop</button>
+          <h2 id="shopItemName">Item</h2>
+          <p class="shop-item-slot" id="shopItemSlot"></p>
+          <div class="shop-bonuses" id="shopBonuses">
+            <!-- bonus rows are rendered here -->
+          </div>
+          <h3 class="modifier-heading">Modifiers</h3>
+          <div class="modifier-grid" id="shopModifiers">
+            <!-- six empty modifier slots are rendered here -->
+          </div>
+          <div class="shop-buy-row">
+            <span class="shop-price" id="shopPrice">0g</span>
+            <button id="shopBuy" type="button" class="buy-btn">Buy</button>
+          </div>
+          <p class="shop-note hidden" id="shopNote" role="status" aria-live="polite"></p>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- Class picker: shown on every hire. Choice is permanent. -->
@@ -200,6 +239,7 @@
   <script src="src/ui/adventurers.js"></script>
   <script src="src/ui/skills.js"></script>
   <script src="src/ui/dungeons.js"></script>
+  <script src="src/ui/town.js"></script>
   <script src="src/ui/battle.js"></script>
   <script src="src/main.js"></script>
 </body>

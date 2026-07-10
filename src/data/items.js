@@ -1,18 +1,29 @@
-// Items — equipment slots and personal inventory.
-// Nothing can be equipped or picked up yet; this is the scaffolding an item
-// system will fill in later. Slots exist on the model and render as "Empty".
+// Items — equipment slots, personal inventory, and the two item kinds that
+// fill them: Loot and Equipment.
+//
+// There are two things an inventory slot can hold, both tagged by `type`:
+//   Loot       — what enemies drop. Just a name and a sell price; no stats.
+//                { type: "loot", name: "Rusty Sword", price: 8, locked: false }
+//   Equipment  — gear you buy in the shop and (later) wear. Carries stat
+//                bonuses and six modifier slots reserved for enchantments.
+//                { type: "equipment", equipId: "ironSword", name: "Iron Sword",
+//                  slot: "weapon", bonuses: [...], modifiers: [null × 6],
+//                  locked: false }
+//
+// A `locked` item is protected from "Sell All Loot" (double-click a slot to
+// toggle it). Loot is the thing that gets sold; locking a piece keeps it.
+//
+// Equipment stat bonuses are a list of descriptors, each either:
+//   flat:   { stat: "ATK", value: 10 }                 → +10 ATK
+//   scaled: { stat: "ATK", perStat: "DEX", mult: 2 }   → +(2× DEX) ATK
+// (Crossbow combines both.) Only flat bonuses fold into a wearer's statline for
+// now; scaled bonuses depend on the wearer and land when equipping is wired up.
 //
 // Active slots: helmet, chestpiece, leg armor, boots, weapon, one accessory,
 // and a bag. A second accessory slot lives in the model but is `locked`, so it
 // stays hidden until it's unlocked later (e.g. via a guild perk). Rendering
 // skips locked slots; flipping `locked` to false is all it takes to reveal it.
 //
-// Item shape (no item system yet — this documents what a slot will hold):
-//   Gear (everything except the bag) carries stat bonuses — one `main` stat
-//   plus a list of `subs` (substats):
-//     { name: "Iron Helmet", slot: "helmet",
-//       main: { stat: "DEF", value: 8 },
-//       subs: [ { stat: "HP", value: 20 }, { stat: "STR", value: 2 } ] }
 //   A bag carries an inventory-slot bonus only, no stat bonuses:
 //     { name: "Leather Pouch", slot: "bag", inventorySlots: 8 }
 const EQUIPMENT_SLOTS = [
@@ -40,18 +51,20 @@ function createEquipment() {
 }
 
 // Flat stat bonuses contributed by all equipped gear (bag excluded). Sums each
-// item's main stat and substats into a { stat: total } map.
+// item's flat bonus descriptors into a { stat: total } map. Scaled bonuses
+// (per-primary) depend on the wearer, so they're skipped here — they'll be
+// applied in the equip-time math once wearing gear is wired up. Nothing can be
+// equipped through the UI yet, so in practice this returns an empty map.
 function equipmentBonuses(adventurer) {
   const totals = {};
-  const add = (stat, value) => {
-    totals[stat] = (totals[stat] || 0) + value;
-  };
   for (const slot of EQUIPMENT_SLOTS) {
     if (slot.id === BAG_SLOT) continue;
     const item = adventurer.equipment[slot.id];
     if (!item) continue;
-    if (item.main) add(item.main.stat, item.main.value);
-    for (const sub of item.subs || []) add(sub.stat, sub.value);
+    for (const b of item.bonuses || []) {
+      if (b.perStat) continue; // scaled bonus — not folded in yet
+      totals[b.stat] = (totals[b.stat] || 0) + b.value;
+    }
   }
   return totals;
 }
@@ -68,4 +81,109 @@ function inventorySlots(adventurer) {
   const bag = adventurer.equipment[BAG_SLOT];
   const bonus = bag ? bag.inventorySlots || 0 : 0;
   return Math.min(MAX_INVENTORY_SLOTS, BASE_INVENTORY_SLOTS + bonus);
+}
+
+// Is there a free slot to drop a picked-up item into?
+function inventoryHasSpace(adventurer) {
+  return adventurer.inventory.length < inventorySlots(adventurer);
+}
+
+// Push an item onto an adventurer's inventory if a slot is free. Returns whether
+// it fit. The inventory is a dense array (index === slot), so a plain push lands
+// the item in the next open slot.
+function addToInventory(adventurer, item) {
+  if (!inventoryHasSpace(adventurer)) return false;
+  adventurer.inventory.push(item);
+  return true;
+}
+
+// --- Loot ------------------------------------------------------------------
+
+// A fresh inventory item from a loot drop (see enemies.js loot tables).
+function createLootItem(loot) {
+  return { type: "loot", name: loot.name, price: loot.price, locked: false };
+}
+
+function isLoot(item) {
+  return !!item && item.type === "loot";
+}
+
+// --- Equipment -------------------------------------------------------------
+
+// Every piece of equipment reserves this many modifier slots for the (upcoming)
+// enchantment feature. They start empty and stay open until enchanting is added.
+const EQUIPMENT_MODIFIER_SLOTS = 6;
+
+// The equipment shop's stock. Each entry is a template; buying one mints a fresh
+// inventory instance (with its own empty modifier slots) via createEquipmentItem.
+const SHOP_EQUIPMENT = [
+  {
+    id: "ironSword",
+    name: "Iron Sword",
+    slot: "weapon",
+    price: 120,
+    bonuses: [{ stat: "ATK", value: 10 }],
+  },
+  {
+    id: "wand",
+    name: "Wand",
+    slot: "weapon",
+    price: 120,
+    bonuses: [{ stat: "MATK", value: 10 }],
+  },
+  {
+    id: "crossbow",
+    name: "Crossbow",
+    slot: "weapon",
+    price: 160,
+    // +(2× DEX) + 2 ATK — a scaling weapon that rewards a high-DEX wielder.
+    bonuses: [
+      { stat: "ATK", perStat: "DEX", mult: 2 },
+      { stat: "ATK", value: 2 },
+    ],
+  },
+  {
+    id: "tunic",
+    name: "Tunic",
+    slot: "chest",
+    price: 90,
+    bonuses: [{ stat: "DEF", value: 4 }],
+  },
+];
+
+function shopItemById(id) {
+  return SHOP_EQUIPMENT.find((e) => e.id === id) || null;
+}
+
+function isEquipment(item) {
+  return !!item && item.type === "equipment";
+}
+
+// Mint a fresh inventory instance of a shop equipment template. Bonuses are
+// copied (so a template is never mutated) and six empty modifier slots are
+// reserved for enchantments.
+function createEquipmentItem(def) {
+  return {
+    type: "equipment",
+    equipId: def.id,
+    name: def.name,
+    slot: def.slot,
+    bonuses: def.bonuses.map((b) => ({ ...b })),
+    modifiers: new Array(EQUIPMENT_MODIFIER_SLOTS).fill(null),
+    locked: false,
+  };
+}
+
+// Human-readable text for one equipment bonus descriptor:
+//   flat   → "+10 ATK"
+//   scaled → "+(2× DEX) ATK"
+function formatBonus(b) {
+  if (b.perStat) return `+(${b.mult}× ${b.perStat}) ${b.stat}`;
+  return `+${b.value} ${b.stat}`;
+}
+
+// The display label for an equipment slot id (e.g. "weapon" → "Weapon").
+function slotLabel(slotId) {
+  const slot = EQUIPMENT_SLOTS.find((s) => s.id === slotId);
+  return slot ? slot.label : slotId;
 }
