@@ -225,8 +225,17 @@ function primaryStats(adventurer) {
 //   DEX = +4 DEF, +10 Max MP, +0.05% CRIT    | every 5: +0.5% EVA
 //   INT = +25 Max MP, +4 MATK, +1 ATK        | every 5: +2% Max MP (additive)
 function effectiveStats(adventurer) {
-  const p = primaryStats(adventurer);
+  const bonuses = equipmentBonuses(adventurer);
   const b = classBase(adventurer.className);
+
+  // Gear primary bonuses (STR/DEX/INT) fold into the primaries *before* derived
+  // stats are computed, so e.g. a weapon's +2 STR raises HP/ATK/DEF/CRIT DMG
+  // exactly like any other STR would.
+  const base = primaryStats(adventurer);
+  const p = {};
+  for (const stat of PRIMARY_STATS) {
+    p[stat] = base[stat] + (bonuses[stat] || 0);
+  }
 
   let hp = b.HP + p.STR * 5;
   let mp = b.MP + p.DEX * 10 + p.INT * 25;
@@ -255,9 +264,12 @@ function effectiveStats(adventurer) {
     EVA: eva,
   };
 
-  // Equipped gear adds flat bonuses on top of the class-derived statline.
-  const bonuses = equipmentBonuses(adventurer);
+  // Gear bonuses to derived stats (ATK, CRIT, DEF, ...) add flat on top. The
+  // primaries are already baked into `p` above, so they're skipped here — this
+  // is what lets a weapon grant +2 STR and +10 ATK and have both land: the STR
+  // cascades through the formulas, the ATK stacks on the result.
   for (const stat in bonuses) {
+    if (PRIMARY_STATS.includes(stat)) continue;
     if (stat in result) result[stat] += bonuses[stat];
   }
 
