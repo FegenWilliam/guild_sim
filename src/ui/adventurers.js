@@ -213,8 +213,19 @@ function renderEquipment(selected) {
   });
 }
 
+// A hover tooltip describing an inventory item.
+function itemTooltip(item) {
+  if (isLoot(item)) return `${item.name} — sells for ${item.price}g`;
+  if (isEquipment(item)) {
+    return `${item.name} (${slotLabel(item.slot)}) — ${item.bonuses.map(formatBonus).join(", ")}`;
+  }
+  return item.name;
+}
+
 // Draw the full inventory grid: every slot up to MAX_INVENTORY_SLOTS, with the
-// ones past the adventurer's unlocked count shown as locked.
+// ones past the adventurer's unlocked count shown as locked. Unlocked slots show
+// whatever loot/equipment sits in them; double-clicking a filled slot toggles
+// the item's lock (a locked item is protected from Sell All Loot).
 function renderInventory(selected) {
   const unlocked = inventorySlots(selected);
   invUnlockedEl.textContent = unlocked;
@@ -228,14 +239,58 @@ function renderInventory(selected) {
       cell.classList.add("locked");
       cell.textContent = "🔒";
     } else {
-      // No item system yet, so unlocked slots are just empty for now.
       const item = selected.inventory[i];
       cell.classList.toggle("empty", !item);
-      cell.textContent = item ? item.name : "";
+      if (item) {
+        cell.classList.add("filled");
+        cell.classList.toggle("loot", isLoot(item));
+        cell.classList.toggle("equipment", isEquipment(item));
+        cell.classList.toggle("locked-item", !!item.locked);
+        cell.textContent = item.name;
+        cell.title = itemTooltip(item) + (item.locked ? " · locked" : "");
+        cell.addEventListener("dblclick", () => toggleItemLock(selected, i));
+      }
     }
 
     inventoryEl.appendChild(cell);
   }
+}
+
+// Toggle an inventory item's lock (double-click). A locked item is kept when
+// selling loot. Re-renders just the grid and saves — no full render needed.
+function toggleItemLock(adventurer, index) {
+  const item = adventurer.inventory[index];
+  if (!item) return;
+  item.locked = !item.locked;
+  renderInventory(adventurer);
+  scheduleSave();
+}
+
+// Sell every unlocked loot item across the whole guild for its price in gold.
+// Equipment and any locked item are left untouched.
+function sellAllLoot() {
+  let earned = 0;
+  let count = 0;
+  state.adventurers.forEach((a) => {
+    const kept = [];
+    a.inventory.forEach((item) => {
+      if (isLoot(item) && !item.locked) {
+        earned += item.price;
+        count += 1;
+      } else {
+        kept.push(item);
+      }
+    });
+    a.inventory = kept;
+  });
+
+  if (count > 0) {
+    state.gold += earned;
+    flashSaveNote(`Sold ${count} loot for ${earned}g.`);
+  } else {
+    flashSaveNote("No loot to sell.");
+  }
+  render();
 }
 
 // Show the panel for the active tab and highlight its button.

@@ -58,6 +58,16 @@ function init() {
   enemyCopyBtn.addEventListener("click", copyEnemy);
   battleBackBtn.addEventListener("click", leaveBattle);
 
+  // Inventory: sell all unlocked loot across the guild.
+  sellLootBtn.addEventListener("click", sellAllLoot);
+
+  // Town: service switcher + Equipment Shop navigation.
+  townNavButtons.forEach((btn) => {
+    btn.addEventListener("click", () => setTownService(btn.dataset.town));
+  });
+  shopBackBtn.addEventListener("click", backToShopGrid);
+  shopBuyBtn.addEventListener("click", buyEquipment);
+
   // Allow cancelling a hire by clicking the backdrop or pressing Escape.
   classModalEl.addEventListener("click", (e) => {
     if (e.target === classModalEl && classModalEl.dataset.cancelable === "true") {

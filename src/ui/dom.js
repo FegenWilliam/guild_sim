@@ -32,6 +32,7 @@ const equipmentEl = document.getElementById("equipment");
 const inventoryPanelEl = document.getElementById("inventoryPanel");
 const inventoryEl = document.getElementById("inventory");
 const invUnlockedEl = document.getElementById("invUnlocked");
+const sellLootBtn = document.getElementById("sellLoot");
 const skillsPanelEl = document.getElementById("skillsPanel");
 const skillsEl = document.getElementById("skills");
 const tabButtons = document.querySelectorAll(".tab");
@@ -60,6 +61,21 @@ const confirmCancelBtn = document.getElementById("confirmCancel");
 const viewNavButtons = document.querySelectorAll(".viewnav-btn");
 const adventurersViewEl = document.getElementById("adventurersView");
 const dungeonsViewEl = document.getElementById("dungeonsView");
+const townViewEl = document.getElementById("townView");
+
+// Town view: service switcher + the Equipment Shop (grid and item detail).
+const townNavButtons = document.querySelectorAll(".townnav-btn");
+const shopServiceEl = document.getElementById("shopService");
+const shopGridEl = document.getElementById("shopGrid");
+const shopDetailEl = document.getElementById("shopDetail");
+const shopBackBtn = document.getElementById("shopBack");
+const shopItemNameEl = document.getElementById("shopItemName");
+const shopItemSlotEl = document.getElementById("shopItemSlot");
+const shopBonusesEl = document.getElementById("shopBonuses");
+const shopModifiersEl = document.getElementById("shopModifiers");
+const shopPriceEl = document.getElementById("shopPrice");
+const shopBuyBtn = document.getElementById("shopBuy");
+const shopNoteEl = document.getElementById("shopNote");
 
 // Dungeon view: list, detail, enemy detail.
 const dungeonListEl = document.getElementById("dungeonList");

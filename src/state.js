@@ -10,7 +10,7 @@ const state = {
   selectedId: null,
   nextId: 1,
   activeTab: "stats", // "stats" | "equipment" | "inventory" | "skills"
-  view: "adventurers", // "adventurers" | "dungeons"
+  view: "adventurers", // "adventurers" | "dungeons" | "town"
   // Which screen the dungeons view is showing:
   //   "list"   — pick a dungeon
   //   "detail" — a dungeon's page (Enter button + enemy list)
@@ -19,4 +19,9 @@ const state = {
   dungeonScreen: "list",
   selectedDungeonId: null,
   selectedEnemyId: null,
+  // Town view: which service is open, and where the Equipment Shop is (its grid
+  // of stock vs. a single item's detail page). All transient — never saved.
+  townService: "shop", // only the Equipment Shop exists so far
+  shopScreen: "grid", // "grid" | "detail"
+  shopItemId: null,
 };

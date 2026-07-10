@@ -8,10 +8,12 @@ function showView(view) {
   state.view = view;
   adventurersViewEl.classList.toggle("hidden", view !== "adventurers");
   dungeonsViewEl.classList.toggle("hidden", view !== "dungeons");
+  townViewEl.classList.toggle("hidden", view !== "town");
   viewNavButtons.forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === view);
   });
   if (view === "dungeons") renderDungeons();
+  else if (view === "town") renderTown();
 }
 
 // --- Dungeon navigation --------------------------------------------------

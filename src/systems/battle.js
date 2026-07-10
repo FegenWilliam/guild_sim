@@ -78,6 +78,9 @@ function enemyCombatant(enemy) {
     magic: false,
     retreatAt: 0,
     status: "active",
+    // The loot table rides along so a kill can roll drops without another
+    // lookup back into ENEMIES.
+    loot: enemy.loot || [],
   };
 }
 
@@ -135,6 +138,26 @@ function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" }
       `${target.name} ${target.side === "party" ? "retreats at 1 HP." : "is defeated!"}`,
       target.side === "party" ? "retreat" : "defeat"
     );
+    // A defeated enemy rolls its loot table into the party's bags.
+    if (target.side === "enemy") awardLoot(target);
+  }
+}
+
+// Roll a defeated enemy's loot and stash each drop in the first party member who
+// has a free inventory slot. When every bag is full the drop is lost — the log
+// says so, which is the nudge to sell loot or grab a bag.
+function awardLoot(enemyCombatant) {
+  const drops = rollLoot(enemyCombatant.loot);
+  for (const loot of drops) {
+    const carrier = battle.partyIds
+      .map((id) => state.adventurers.find((a) => a.id === id))
+      .find((a) => a && inventoryHasSpace(a));
+    if (carrier) {
+      addToInventory(carrier, createLootItem(loot));
+      logLine(`${enemyCombatant.name} dropped ${loot.name}!`, "loot");
+    } else {
+      logLine(`${enemyCombatant.name} dropped ${loot.name}, but the bags are full.`, "loot");
+    }
   }
 }
 
