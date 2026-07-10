@@ -66,6 +66,34 @@ const CLASSES = {
   },
 };
 
+// --- Equipment -----------------------------------------------------------
+// Each adventurer has a set of gear slots. Nothing can be equipped yet — this
+// is scaffolding: slots exist on the model and render as "Empty", ready for an
+// item system to fill them in later.
+//
+// Six slots are active: helmet, chestpiece, leg armor, boots, weapon, and one
+// accessory. A second accessory slot lives in the model but is `locked`, so it
+// stays hidden until it's unlocked later (e.g. via a guild perk). Rendering
+// skips locked slots; flipping `locked` to false is all it takes to reveal it.
+const EQUIPMENT_SLOTS = [
+  { id: "helmet", label: "Helmet" },
+  { id: "chest", label: "Chestpiece" },
+  { id: "legs", label: "Leg Armor" },
+  { id: "boots", label: "Boots" },
+  { id: "weapon", label: "Weapon" },
+  { id: "accessory1", label: "Accessory" },
+  // Future: second accessory slot, unlocked later. Hidden for now.
+  { id: "accessory2", label: "Accessory", locked: true },
+];
+
+// A fresh, fully-empty equipment map keyed by slot id (locked slots included,
+// so the data is ready the moment a slot is unlocked).
+function createEquipment() {
+  const equipment = {};
+  for (const slot of EQUIPMENT_SLOTS) equipment[slot.id] = null;
+  return equipment;
+}
+
 // Resolved base derived stats for a class: defaults with its overrides applied.
 function classBase(className) {
   return { ...DEFAULT_BASE, ...CLASSES[className].base };
@@ -82,6 +110,7 @@ const state = {
   adventurers: [],
   selectedId: null,
   nextId: 1,
+  activeTab: "stats", // "stats" | "equipment"
 };
 
 // --- Elements -------------------------------------------------------------
@@ -98,6 +127,8 @@ const levelEl = document.getElementById("level");
 const xpFillEl = document.getElementById("xpFill");
 const xpTextEl = document.getElementById("xpText");
 const statsEl = document.getElementById("stats");
+const equipmentEl = document.getElementById("equipment");
+const tabButtons = document.querySelectorAll(".tab");
 const emptyHintEl = document.getElementById("emptyHint");
 const classModalEl = document.getElementById("classModal");
 const classChoicesEl = document.getElementById("classChoices");
@@ -111,6 +142,7 @@ function createAdventurer(className) {
     className,
     level: 1,
     xp: 0,
+    equipment: createEquipment(),
   };
 }
 
@@ -310,6 +342,12 @@ function renderStatsheet() {
   xpFillEl.style.width = `${pct}%`;
   xpTextEl.textContent = `${selected.xp} / ${needed} XP`;
 
+  renderStats(selected);
+  renderEquipment(selected);
+  applyTab();
+}
+
+function renderStats(selected) {
   statsEl.innerHTML = "";
   const stats = effectiveStats(selected);
   DISPLAY_ORDER.forEach((label) => {
@@ -327,6 +365,44 @@ function renderStatsheet() {
     row.append(nameSpan, valueSpan);
     statsEl.appendChild(row);
   });
+}
+
+function renderEquipment(selected) {
+  equipmentEl.innerHTML = "";
+  EQUIPMENT_SLOTS.forEach((slot) => {
+    if (slot.locked) return; // hidden until the slot is unlocked
+
+    const item = selected.equipment[slot.id];
+    const row = document.createElement("div");
+    row.className = "equip-slot";
+    row.classList.toggle("empty", !item);
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "equip-label";
+    nameSpan.textContent = slot.label;
+
+    const valueSpan = document.createElement("span");
+    valueSpan.className = "equip-item";
+    // No item system yet, so every slot reads "Empty" for now.
+    valueSpan.textContent = item ? item.name : "Empty";
+
+    row.append(nameSpan, valueSpan);
+    equipmentEl.appendChild(row);
+  });
+}
+
+// Show the panel for the active tab and highlight its button.
+function applyTab() {
+  statsEl.classList.toggle("hidden", state.activeTab !== "stats");
+  equipmentEl.classList.toggle("hidden", state.activeTab !== "equipment");
+  tabButtons.forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.tab === state.activeTab);
+  });
+}
+
+function setTab(tab) {
+  state.activeTab = tab;
+  applyTab();
 }
 
 function render() {
@@ -349,6 +425,9 @@ function init() {
 
   hireBtn.addEventListener("click", hireNewbie);
   nameEl.addEventListener("input", (e) => renameSelected(e.target.value));
+  tabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => setTab(btn.dataset.tab));
+  });
 
   // Allow cancelling a hire by clicking the backdrop or pressing Escape.
   classModalEl.addEventListener("click", (e) => {
