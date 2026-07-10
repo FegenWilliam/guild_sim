@@ -1445,6 +1445,15 @@ button.modifier-slot:active {
   color: var(--tier, #ece7f5);
   font-style: normal;
   font-weight: 700;
+  word-break: break-word;
+  line-height: 1.25;
+}
+
+/* A unique enchantment keeps a solid tier tint plus a faint glow so it reads as
+   more than a stat roll. */
+.modifier-slot.unique {
+  background: #241d33;
+  box-shadow: 0 0 0 1px var(--tier, #3a3150) inset;
 }
 
 .modifier-slot.selected {

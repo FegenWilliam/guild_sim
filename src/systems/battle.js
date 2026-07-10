@@ -33,16 +33,27 @@ function roll(percent) {
 // from earlier runs until the day is passed.
 function partyCombatant(adventurer) {
   const s = effectiveStats(adventurer);
+  // Unique enchantments live on equipped gear (dormant until wearing gear is
+  // wired up). Andragolas is the one that reshapes the statline up front: it
+  // scales the HP/MP pools before anything enters.
+  const u = gatherUniques(adventurer);
+  let maxHp = s.HP;
+  let maxMp = s.MP;
+  if (u.andragolas) {
+    maxHp = Math.round(s.HP * (1 + u.andragolas / 100));
+    maxMp = Math.round(s.MP * (1 + u.andragolas / 100));
+  }
+  const daily = adventurer.enchantDaily || {};
   return {
     id: adventurer.id,
     name: displayName(adventurer),
     side: "party",
     hp: currentHp(adventurer),
-    maxHp: s.HP,
+    maxHp,
     // MP carries over between runs just like HP — it enters at its persisted
     // value and only refills on Pass Day.
     mp: currentMp(adventurer),
-    maxMp: s.MP,
+    maxMp,
     atk: s.ATK,
     matk: s.MATK,
     def: s.DEF,
@@ -50,6 +61,7 @@ function partyCombatant(adventurer) {
     critDmg: s["CRIT DMG"],
     eva: s.EVA,
     magic: adventurer.className === "Mage",
+    className: adventurer.className,
     // The full statline, learned skills ({ id: level } map), and targeting
     // preference ride along so the AI can pick and aim skills mid-fight. Skill
     // damage scales off primaries (DEX/INT) and the skill's level.
@@ -58,6 +70,16 @@ function partyCombatant(adventurer) {
     strategy: adventurer.strategy === "highest" ? "highest" : "lowest",
     retreatAt: 1,
     status: "active",
+    // Enchantment combat state (see systems/battle.js unique hooks):
+    uniques: u,
+    dot: null,             // an incoming Blazing burn { dmg, turns }
+    vampCounter: 0,        // turns toward the next Vampiric heal
+    vampProc: false,       // this turn's damage heals (Vampiric)
+    ampUses: {},           // per-skill cast count (Amplified Mana)
+    shieldActive: 0,       // DEF banked for the next hit (Magical Shield)
+    snipeStacks: 0,        // Sniper's Focus stacks
+    mpBoostUsed: !!daily.mpBoost,   // once-per-day MP Boost spent today
+    lastStandUsed: !!daily.lastStand, // once-per-day Last Stand spent today
   };
 }
 
@@ -84,6 +106,9 @@ function enemyCombatant(enemy) {
     // The XP this enemy is worth also drives its enchantment-stone drop odds,
     // so cache it once here rather than re-deriving from stats on every kill.
     xp: enemyXP(enemy),
+    // Enemies carry no uniques, but they can still catch a party member's
+    // Blazing burn, so they get a DOT slot too.
+    dot: null,
   };
 }
 
@@ -120,8 +145,17 @@ function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" }
     return;
   }
 
+  // Magical Shield: a struck party member banks DEF for the *next* hit only.
+  // Spend whatever's banked on this hit, then re-arm it below if it survives.
+  const shielded = target.side === "party" && target.uniques && target.uniques.magicalShield;
+  let extraDef = 0;
+  if (shielded) {
+    extraDef = target.shieldActive || 0;
+    target.shieldActive = 0;
+  }
+
   let dmg = baseDamage;
-  if (!ignoreDef) dmg -= target.def * 0.5;
+  if (!ignoreDef) dmg -= (target.def + extraDef) * 0.5;
 
   const crit = roll(attacker.crit);
   if (crit) dmg *= attacker.critDmg / 100;
@@ -133,6 +167,29 @@ function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" }
     `${attacker.name} ${label ? `${label} hits` : "hits"} ${target.name} for ${dmg}${crit ? " (CRIT!)" : ""}.`,
     attacker.side === "party" ? "party" : "enemy"
   );
+
+  // Vampiric: when the proc is up, the attacker drains a cut of the damage —
+  // resolved before the death check so even a killing blow heals, and consumed
+  // so a multi-hit skill only drains once.
+  if (attacker.side === "party" && attacker.vampProc && dmg > 0) {
+    const heal = Math.round(dmg * VAMPIRIC_HEAL / 100);
+    if (heal > 0) {
+      attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
+      logLine(`${attacker.name} drains ${heal} HP.`, "party");
+    }
+    attacker.vampProc = false;
+  }
+
+  // Last Stand: a lethal blow on a party member is shrugged off once per day,
+  // holding at a fraction of max HP instead of retreating.
+  if (
+    target.side === "party" && target.hp <= target.retreatAt &&
+    target.uniques && target.uniques.lastStand && !target.lastStandUsed
+  ) {
+    target.lastStandUsed = true;
+    target.hp = Math.max(target.retreatAt + 1, Math.round(target.maxHp * target.uniques.lastStand / 100));
+    logLine(`${target.name} makes a Last Stand and holds at ${target.hp} HP!`, "skill");
+  }
 
   if (target.hp <= target.retreatAt) {
     target.hp = target.retreatAt;
@@ -146,6 +203,45 @@ function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" }
     if (target.side === "enemy") {
       awardLoot(target);
       awardEnchantStones(target);
+    }
+    return; // downed: nothing left to shield or burn
+  }
+
+  // Survived the hit — re-arm the shield and lay any Blazing burn.
+  if (shielded) target.shieldActive = target.uniques.magicalShield;
+
+  // Blazing: a party hit burns a live enemy for a share of the damage dealt. A
+  // bigger burn replaces and refreshes a smaller one; a smaller one is ignored.
+  if (attacker.side === "party" && attacker.uniques && attacker.uniques.blazing && target.side === "enemy") {
+    const perTurn = Math.round(dmg * attacker.uniques.blazing / 100);
+    if (perTurn > 0 && (!target.dot || perTurn > target.dot.dmg)) {
+      target.dot = { dmg: perTurn, turns: BLAZING_DURATION };
+    }
+  }
+}
+
+// Tick a combatant's Blazing burn at the start of its turn: burn damage skips
+// DEF and evasion, decrements the timer, and can finish the victim (rolling its
+// loot/stones just like a normal kill).
+function tickDot(combatant) {
+  if (!combatant.dot) return;
+  const dmg = combatant.dot.dmg;
+  combatant.hp -= dmg;
+  logLine(`${combatant.name} burns for ${dmg}.`, "party");
+  combatant.dot.turns -= 1;
+  if (combatant.dot.turns <= 0) combatant.dot = null;
+
+  if (combatant.hp <= combatant.retreatAt) {
+    combatant.hp = combatant.retreatAt;
+    combatant.status = combatant.side === "party" ? "out" : "down";
+    combatant.dot = null;
+    logLine(
+      `${combatant.name} ${combatant.side === "party" ? "retreats at 1 HP." : "is defeated!"}`,
+      combatant.side === "party" ? "retreat" : "defeat"
+    );
+    if (combatant.side === "enemy") {
+      awardLoot(combatant);
+      awardEnchantStones(combatant);
     }
   }
 }
@@ -179,11 +275,21 @@ function awardEnchantStones(enemyCombatant) {
   }
 }
 
+// The percent damage bonus a combatant's currently-banked Sniper's Focus
+// (Sniping) grants everything it does this turn. Read before the stacks change.
+function snipePct(attacker) {
+  const u = attacker.uniques || {};
+  if (!u.sniping) return 0;
+  return (attacker.snipeStacks || 0) * SNIPING_STEP;
+}
+
 // Resolve a single basic attack from `attacker` against `target`. Mages swing
-// with half their MATK ignoring DEF; everyone else swings with ATK.
+// with half their MATK ignoring DEF; everyone else swings with ATK. Sniper's
+// Focus scales the swing.
 function resolveAttack(attacker, target) {
   const base = attacker.magic ? attacker.matk * 0.5 : attacker.atk;
-  dealHit(attacker, target, base, { ignoreDef: attacker.magic });
+  const mult = 1 + snipePct(attacker) / 100;
+  dealHit(attacker, target, base * mult, { ignoreDef: attacker.magic });
 }
 
 // Order the still-active foes by the attacker's targeting strategy: "lowest"
@@ -231,10 +337,22 @@ function chooseSkill(attacker, foes) {
 
 // Land one volley of a skill: aim by strategy, hit up to its (leveled) target
 // count. Split out so Repeat can fire it again, re-aiming at whoever's left.
-function skillVolley(attacker, skill, level, foes) {
-  const targets = orderFoesByStrategy(attacker, foes).slice(0, skillMaxTargets(skill, level));
+// `turnPct` is the flat damage bonus this turn (Sniping + Amplified Mana); Big
+// Sweep is added here since it depends on how many targets this volley finds.
+function skillVolley(attacker, skill, level, foes, turnPct) {
+  const maxTargets = skillMaxTargets(skill, level);
+  const targets = orderFoesByStrategy(attacker, foes).slice(0, maxTargets);
   if (!targets.length) return;
-  const base = skillDamage(attacker.stats, skill, level);
+
+  let pct = turnPct || 0;
+  // Big Sweep: a Warrior skill hitting fewer than its max targets concentrates,
+  // dealing more per "missing" target — a lone target eats the whole surplus.
+  const u = attacker.uniques || {};
+  if (u.bigSweep && attacker.className === "Warrior") {
+    pct += Math.max(0, maxTargets - targets.length) * u.bigSweep;
+  }
+
+  const base = skillDamage(attacker.stats, skill, level) * (1 + pct / 100);
   const ignoreDef = skillIgnoresDef(skill);
   targets.forEach((t) => dealHit(attacker, t, base, { ignoreDef, label: skill.name }));
 }
@@ -248,11 +366,55 @@ function resolveSkill(attacker, skill, foes) {
   attacker.mp = Math.max(0, attacker.mp - cost);
   logLine(`${attacker.name} uses ${skill.name}! (-${cost} MP)`, "skill");
 
+  // Damage bonuses that hold for every volley this turn: Sniper's Focus, plus
+  // Amplified Mana's stacking bonus for repeat casts of the *same* mage skill.
+  let turnPct = snipePct(attacker);
+  const u = attacker.uniques || {};
+  if (u.amplified && attacker.magic) {
+    const prior = attacker.ampUses[skill.id] || 0;
+    turnPct += Math.min(u.amplified, prior * AMPLIFIED_STEP);
+    attacker.ampUses[skill.id] = prior + 1;
+  }
+
   const volleys = 1 + skillRepeat(skill, level);
   for (let i = 0; i < volleys; i++) {
     if (i > 0) logLine(`${skill.name} repeats!`, "skill");
-    skillVolley(attacker, skill, level, foes);
+    skillVolley(attacker, skill, level, foes, turnPct);
     if (!foes.some(isActive)) break; // nothing left to hit
+  }
+}
+
+// After a party member acts, advance its Sniper's Focus: a basic attack banks a
+// stack (up to the cap), a skill spends the built-up focus and resets to zero.
+function updateSnipe(attacker, usedSkill) {
+  const u = attacker.uniques || {};
+  if (!u.sniping) return;
+  attacker.snipeStacks = usedSkill ? 0 : Math.min(u.sniping, (attacker.snipeStacks || 0) + 1);
+}
+
+// Advance a party member's Vampiric timer at the start of its turn; when it
+// comes due, this turn's damage will heal (a 0-turn roll heals every turn).
+function vampireTick(attacker) {
+  const u = attacker.uniques || {};
+  if (u.vampiric === undefined) return;
+  const every = Math.max(1, u.vampiric);
+  attacker.vampCounter = (attacker.vampCounter || 0) + 1;
+  if (attacker.vampCounter >= every) {
+    attacker.vampProc = true;
+    attacker.vampCounter = 0;
+  }
+}
+
+// MP Boost: once per day, refill a slice of MP the moment a party member drops
+// below the low-MP threshold. Checked after it acts (and has spent MP).
+function tryMpBoost(attacker) {
+  const u = attacker.uniques || {};
+  if (!u.mpBoost || attacker.mpBoostUsed) return;
+  if (attacker.mp < attacker.maxMp * (MP_BOOST_THRESHOLD / 100)) {
+    attacker.mpBoostUsed = true;
+    const restored = Math.round(attacker.maxMp * u.mpBoost / 100);
+    attacker.mp = Math.min(attacker.maxMp, attacker.mp + restored);
+    logLine(`${attacker.name}'s MP Boost restores ${restored} MP!`, "skill");
   }
 }
 
@@ -284,6 +446,9 @@ function syncPartyHp() {
     if (adv) {
       adv.hp = c.hp;
       adv.mp = c.mp;
+      // Persist once-per-day enchantment use (MP Boost / Last Stand) so it can't
+      // be reset by leaving and re-entering — only Pass Day clears it.
+      adv.enchantDaily = { mpBoost: !!c.mpBoostUsed, lastStand: !!c.lastStandUsed };
     }
   }
 }
@@ -361,18 +526,32 @@ function battleStep() {
   }
 
   if (attacker) {
-    const foes = attacker.side === "party" ? battle.enemies : battle.party;
-    // Use a skill if one's affordable and appropriate, else a basic attack. A
-    // party member aims by its strategy; enemies just hit the first foe up.
-    const skill = chooseSkill(attacker, foes);
-    if (skill) {
-      resolveSkill(attacker, skill, foes);
-    } else {
-      const target =
-        attacker.side === "party"
-          ? orderFoesByStrategy(attacker, foes)[0]
-          : foes.find(isActive);
-      if (target) resolveAttack(attacker, target);
+    // A Blazing burn bites at the start of the victim's turn — it can drop the
+    // attacker before it ever swings.
+    tickDot(attacker);
+    if (isActive(attacker)) {
+      const foes = attacker.side === "party" ? battle.enemies : battle.party;
+      // Advance the Vampiric timer before the swing so this turn can heal.
+      if (attacker.side === "party") vampireTick(attacker);
+      // Use a skill if one's affordable and appropriate, else a basic attack. A
+      // party member aims by its strategy; enemies just hit the first foe up.
+      const skill = chooseSkill(attacker, foes);
+      if (skill) {
+        resolveSkill(attacker, skill, foes);
+      } else {
+        const target =
+          attacker.side === "party"
+            ? orderFoesByStrategy(attacker, foes)[0]
+            : foes.find(isActive);
+        if (target) resolveAttack(attacker, target);
+      }
+      // Post-turn enchantment upkeep for party members: bank/spend Sniper's
+      // Focus, top up MP if it bottomed out, and let the Vampiric proc lapse.
+      if (attacker.side === "party") {
+        updateSnipe(attacker, !!skill);
+        tryMpBoost(attacker);
+        attacker.vampProc = false;
+      }
     }
     syncPartyHp();
     checkBattleEnd();
@@ -404,6 +583,14 @@ function startBattle() {
   }
 
   const party = state.adventurers.map(partyCombatant);
+  // Power of Friendship: each member gains ATK for every *other* adventurer who
+  // entered. Fixed at entry, so retreats along the way don't sap it.
+  const others = party.length - 1;
+  if (others > 0) {
+    for (const c of party) {
+      if (c.uniques && c.uniques.friendship) c.atk += c.uniques.friendship * others;
+    }
+  }
   const pack = rollEnemyPack(dungeon);
 
   battle = {

@@ -22,6 +22,9 @@ function createAdventurer(className) {
     skillPoints: 0,
     // Battle targeting preference: "lowest" or "highest" enemy HP.
     strategy: "lowest",
+    // Once-per-day enchantment charges (MP Boost / Last Stand), refilled on
+    // Pass Day. false = still available today.
+    enchantDaily: { mpBoost: false, lastStand: false },
   };
   const starter = starterSkillForClass(className);
   if (starter) adventurer.skills[starter.id] = 1;

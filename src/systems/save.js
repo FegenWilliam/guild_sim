@@ -74,6 +74,11 @@ function applySave(data) {
     // adventurers so their banked levels aren't lost.
     if (typeof a.skillPoints !== "number") a.skillPoints = Math.max(0, a.level - 1);
     if (a.strategy !== "highest" && a.strategy !== "lowest") a.strategy = "lowest";
+
+    // Once-per-day enchantment charges: default for saves that predate them.
+    if (!a.enchantDaily || typeof a.enchantDaily !== "object") {
+      a.enchantDaily = { mpBoost: false, lastStand: false };
+    }
   });
   if (!state.adventurers.some((a) => a.id === state.selectedId)) {
     state.selectedId = state.adventurers.length ? state.adventurers[0].id : null;

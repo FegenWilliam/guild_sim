@@ -61,8 +61,15 @@ function rollEnchantSlot(tierId) {
     return;
   }
 
-  const mod = rollEnchantment(tierId);
-  if (!mod) return;
+  // Enchantments are exclusive: the roll excludes whatever sits on the item's
+  // *other* slots (the slot being rolled is free to reroll into anything).
+  const others = target.item.modifiers.filter((_, i) => i !== slot);
+  const mod = rollEnchantment(tierId, others);
+  if (!mod) {
+    renderEnchant();
+    showEnchantNote("No distinct enchantment left to roll on this piece.");
+    return;
+  }
   state.enchantStones[tierId] -= 1;
   target.item.modifiers[slot] = mod;
 
@@ -182,9 +189,13 @@ function renderEnchantDetail({ item }) {
     const cell = document.createElement("button");
     cell.type = "button";
     cell.className = "modifier-slot" + (mod ? " filled" : " empty");
+    if (mod && mod.unique) cell.classList.add("unique");
     if (i === state.enchantSlotIndex) cell.classList.add("selected");
-    if (mod) cell.dataset.tier = mod.tier;
-    cell.textContent = formatModifier(mod);
+    if (mod) {
+      cell.dataset.tier = mod.tier;
+      cell.title = formatModifier(mod); // full effect text on hover
+    }
+    cell.textContent = formatModifierShort(mod);
     cell.addEventListener("click", () => selectEnchantSlot(i));
     enchantModifiersEl.appendChild(cell);
   }

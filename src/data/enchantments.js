@@ -95,25 +95,169 @@ function roundEnchantValue(stat, value) {
   return Math.round(value);
 }
 
-// Roll one stone of `tierId` into a concrete modifier: pick a random stat, roll
-// a percent inside the tier's band, and scale the stat's max by it. Returns a
-// flat modifier descriptor { stat, value, tier } ready to drop into a slot, or
-// null if the tier id is unknown.
-function rollEnchantment(tierId) {
+// === Unique enchantments ====================================================
+//
+// Uniques aren't raw stats — each is a named effect with its own combat hook
+// (wired up in systems/battle.js). They share the tier band system: a unique's
+// rolled strength is `band% × number` (its 100% value), so a Legendary stone
+// rolls a far stronger effect than a Common one. Two knobs per unique:
+//   number  — the 100% ceiling the band scales.
+//   chance  — the flat % chance this unique surfaces on any single roll,
+//             independent of the stone's tier (1% each, Andragolas 0.1%).
+// `flipped` inverts the band (Vampiric: higher rarity → fewer turns, so
+// number → 0 as rarity climbs). `rareUnique` only changes how it's labelled.
+//
+// Sub-effect magnitudes that aren't themselves banded live as named constants
+// so they stay easy to retune.
+const BLAZING_DURATION = 3;   // turns a Blazing burn lasts
+const VAMPIRIC_HEAL = 20;     // % of damage healed when Vampiric procs
+const AMPLIFIED_STEP = 50;    // % damage added per repeat cast of a mage skill
+const SNIPING_STEP = 25;      // % damage per Sniper's Focus stack
+const MP_BOOST_THRESHOLD = 5; // restore MP once it drops below this % of max
+
+const UNIQUE_ENCHANTS = [
+  {
+    id: "blazing", name: "Blazing", chance: 1, number: 50,
+    label: (v) => `Burn for ${v}% of the hit over ${BLAZING_DURATION} turns`,
+  },
+  {
+    id: "vampiric", name: "Vampiric", chance: 1, number: 5, flipped: true,
+    label: (v) => `Heal ${VAMPIRIC_HEAL}% of damage every ${v <= 0 ? "turn" : `${v} turns`}`,
+  },
+  {
+    id: "amplified", name: "Amplified Mana", chance: 1, number: 500,
+    label: (v) => `Repeat a mage skill for +${AMPLIFIED_STEP}%/cast, up to +${v}%`,
+  },
+  {
+    id: "magicalShield", name: "Magical Shield", chance: 1, number: 250,
+    label: (v) => `+${v} DEF against the next hit whenever struck`,
+  },
+  {
+    id: "bigSweep", name: "Big Sweep", chance: 1, number: 50,
+    label: (v) => `Warrior skills deal +${v}% per missing AoE target`,
+  },
+  {
+    id: "sniping", name: "Sniping", chance: 1, number: 10,
+    label: (v) => `+${SNIPING_STEP}% damage per Sniper's Focus stack (max ${v})`,
+  },
+  {
+    id: "mpBoost", name: "MP Boost", chance: 1, number: 100,
+    label: (v) => `Restore ${v}% MP below ${MP_BOOST_THRESHOLD}% MP, once per day`,
+  },
+  {
+    id: "lastStand", name: "Last Stand", chance: 1, number: 10,
+    label: (v) => `Survive lethal damage at ${v}% HP, once per day`,
+  },
+  {
+    id: "friendship", name: "Power of Friendship", chance: 1, number: 100,
+    label: (v) => `+${v} ATK for every other adventurer in the party`,
+  },
+  {
+    id: "andragolas", name: "Andragolas", chance: 0.1, number: 100, rareUnique: true,
+    label: (v) => `+${v}% max HP and +${v}% max MP`,
+  },
+];
+
+function uniqueById(id) {
+  return UNIQUE_ENCHANTS.find((u) => u.id === id) || null;
+}
+
+// Roll a unique's banded value: normal uniques scale up with rarity, flipped
+// ones (Vampiric) scale down. Rounded to a whole number — every unique's value
+// is a count, a flat amount, or a percent that reads cleanly as an integer.
+function rollUniqueValue(def, tier) {
+  const [lo, hi] = tier.band;
+  const f = (lo + Math.random() * (hi - lo)) / 100;
+  return Math.round(def.number * (def.flipped ? 1 - f : f));
+}
+
+// Every unique already present on an adventurer's equipped gear, keyed by id to
+// its best rolled value (highest, or lowest for a flipped unique). Combat reads
+// this to know which effects are live. Empty in practice until wearing gear is
+// wired up, but the plumbing is ready.
+function gatherUniques(adventurer) {
+  const out = {};
+  for (const slot of EQUIPMENT_SLOTS) {
+    if (slot.id === BAG_SLOT) continue;
+    const item = adventurer.equipment[slot.id];
+    if (!item) continue;
+    for (const mod of item.modifiers || []) {
+      if (!mod || !mod.unique) continue;
+      const def = uniqueById(mod.unique);
+      if (!def) continue;
+      const cur = out[mod.unique];
+      const better = cur === undefined || (def.flipped ? mod.value < cur : mod.value > cur);
+      if (better) out[mod.unique] = mod.value;
+    }
+  }
+  return out;
+}
+
+// === Rolling ================================================================
+
+// Roll one stone of `tierId` into a modifier for a slot, given the modifiers
+// already on the *rest* of the item (`existing`). Enchantments are exclusive:
+// no stat or unique may repeat on the same piece, so anything already present
+// is excluded. Each roll first checks every eligible unique on its own flat
+// chance (a tie between several picks one at random); failing that, it rolls a
+// plain stat inside the tier's band. Returns { stat, value, tier } or
+// { unique, value, tier }, or null if nothing distinct is left to roll.
+function rollEnchantment(tierId, existing) {
   const tier = enchantTierById(tierId);
   if (!tier) return null;
 
-  const stat = ENCHANT_STATS[Math.floor(Math.random() * ENCHANT_STATS.length)];
+  const usedStats = new Set();
+  const usedUniques = new Set();
+  for (const m of existing || []) {
+    if (!m) continue;
+    if (m.unique) usedUniques.add(m.unique);
+    else if (m.stat) usedStats.add(m.stat);
+  }
+
+  // Uniques first: independent chance each, excluding those already on the item.
+  const winners = [];
+  for (const def of UNIQUE_ENCHANTS) {
+    if (usedUniques.has(def.id)) continue;
+    if (Math.random() * 100 < def.chance) winners.push(def);
+  }
+  if (winners.length) {
+    const def = winners[Math.floor(Math.random() * winners.length)];
+    return { unique: def.id, value: rollUniqueValue(def, tier), tier: tierId };
+  }
+
+  // Otherwise a plain stat, excluding stats already present on the item.
+  const pool = ENCHANT_STATS.filter((s) => !usedStats.has(s));
+  if (!pool.length) return null;
+  const stat = pool[Math.floor(Math.random() * pool.length)];
   const [lo, hi] = tier.band;
   const percent = lo + Math.random() * (hi - lo);
   const value = roundEnchantValue(stat, (percent / 100) * ENCHANT_STAT_MAX[stat]);
   return { stat, value, tier: tierId };
 }
 
-// Human-readable text for one rolled modifier, e.g. "+40 ATK" or "+12.5% CRIT".
-// Mirrors formatBonus/formatValue so enchantments read like every other stat.
+// Full description of a rolled modifier, e.g. "+40 ATK", "+12.5% CRIT", or
+// "Blazing (Unique) — Burn for 43% of the hit over 3 turns". Used on the
+// Enchanter detail and in the roll note.
 function formatModifier(mod) {
   if (!mod) return "Empty";
+  if (mod.unique) {
+    const def = uniqueById(mod.unique);
+    if (!def) return "Unknown enchantment";
+    const tag = def.rareUnique ? "Rare Unique" : "Unique";
+    return `${def.name} (${tag}) — ${def.label(mod.value)}`;
+  }
+  const shown = PERCENT_STATS.has(mod.stat) ? `${mod.value}%` : mod.value;
+  return `+${shown} ${mod.stat}`;
+}
+
+// Compact label for a modifier slot cell: a unique shows its name (with a ✦),
+// a stat shows its short "+N STAT". The full text rides along as a tooltip.
+function formatModifierShort(mod) {
+  if (!mod) return "Empty";
+  if (mod.unique) {
+    const def = uniqueById(mod.unique);
+    return def ? `✦ ${def.name}` : "✦ ?";
+  }
   const shown = PERCENT_STATS.has(mod.stat) ? `${mod.value}%` : mod.value;
   return `+${shown} ${mod.stat}`;
 }
