@@ -77,7 +77,7 @@ function xpToNext(level) {
 }
 
 const state = {
-  gold: 0,
+  gold: 1000,
   maxAdventurers: BASE_MAX_ADVENTURERS,
   adventurers: [],
   selectedId: null,
@@ -287,7 +287,10 @@ function renderStatsheet() {
 
   if (!selected) {
     statsheetEl.classList.add("hidden");
-    emptyHintEl.classList.toggle("hidden", state.adventurers.length > 0);
+    // With no adventurers at all, the game just shows the hire button — no
+    // statsheet and no placeholder hint. The hint is only for the rare case
+    // where a roster exists but nothing is selected.
+    emptyHintEl.classList.toggle("hidden", state.adventurers.length === 0);
     return;
   }
 
@@ -347,8 +350,7 @@ function init() {
   hireBtn.addEventListener("click", hireNewbie);
   nameEl.addEventListener("input", (e) => renameSelected(e.target.value));
 
-  // Allow cancelling a hire (but not the mandatory first-newbie pick) by
-  // clicking the backdrop or pressing Escape.
+  // Allow cancelling a hire by clicking the backdrop or pressing Escape.
   classModalEl.addEventListener("click", (e) => {
     if (e.target === classModalEl && classModalEl.dataset.cancelable === "true") {
       closeClassPicker();
@@ -364,15 +366,10 @@ function init() {
     }
   });
 
+  // Player starts with 1000 gold and an empty roster: just the hire button is
+  // shown. Hiring the first newbie triggers class selection and the statsheet
+  // pops up once a roster exists.
   render();
-
-  // Player starts broke, and must choose a class for their first free newbie.
-  openClassPicker((className) => {
-    const starter = createAdventurer(className);
-    state.adventurers.push(starter);
-    state.selectedId = starter.id;
-    render();
-  }, { cancelable: false });
 }
 
 init();
