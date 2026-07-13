@@ -56,7 +56,7 @@ function enemyClipboardText(enemy) {
   lines.push(`XP: ${formatXP(enemyXP(enemy))}`);
   (enemy.skills || []).forEach((id) => {
     const skill = enemySkillById(id);
-    if (skill) lines.push(`Skill: ${skill.name} — ${skill.description}`);
+    if (skill) lines.push(`Skill: ${skill.name} — ${skill.description} (${enemySkillMeta(skill)})`);
   });
   (enemy.mods || []).forEach((id) => {
     const mod = enemyModById(id);
@@ -192,7 +192,9 @@ function renderEnemyDetail() {
   // description in the value. These come from the shared enemy-skill/-mod pools.
   (enemy.skills || []).forEach((id) => {
     const skill = enemySkillById(id);
-    if (skill) addRow(`Skill — ${skill.name}`, skill.description, "enemy-power-row");
+    if (skill) {
+      addRow(`Skill — ${skill.name}`, `${skill.description} (${enemySkillMeta(skill)})`, "enemy-power-row");
+    }
   });
   (enemy.mods || []).forEach((id) => {
     const mod = enemyModById(id);

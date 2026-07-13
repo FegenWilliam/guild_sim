@@ -93,13 +93,15 @@ function enemyCombatant(enemy) {
   // Mods resolve to a combined effect bundle (damage multipliers, extra actions,
   // DOT sources, …) the same way a party member's uniques do (data/enemyMods.js).
   const effects = gatherModEffects(enemy);
+  // A Giant-style mod scales the HP pool up front, before the enemy enters.
+  const maxHp = Math.round(s.HP * effects.maxHpMult);
   // Only a skill-carrying enemy needs an MP pool; skill-less ones show no MP bar.
   const canCast = (enemy.skills || []).length > 0;
   return {
     name: enemy.name,
     side: "enemy",
-    hp: s.HP,
-    maxHp: s.HP,
+    hp: maxHp,
+    maxHp,
     // MP is spent by enemy skills; 0/0 for a non-caster so no bar renders.
     mp: canCast ? s.MP : 0,
     maxMp: canCast ? s.MP : 0,
@@ -117,6 +119,10 @@ function enemyCombatant(enemy) {
     skills: enemy.skills || [],
     // Resolved mod effects, read by combat (dealHit, the round builder).
     effects,
+    // Per-skill cooldowns (skillId → turns remaining) and the once-per-fight
+    // Last Stand flag, both mod-driven combat state.
+    cooldowns: {},
+    lastStandUsed: false,
     // Mod display names, tagged on the battle card so a modded foe reads clearly.
     mods: enemyModNames(enemy),
     // The loot table rides along so a kill can roll drops without another
@@ -211,6 +217,18 @@ function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" }
     attacker.vampProc = false;
   }
 
+  // Lifesteal (the Vampiric mechanic as a shared effect): a combatant carrying it
+  // drains a cut of every hit's damage. Resolved before the death check so a
+  // killing blow still heals. This is the enemy-mod path; the party's Vampiric
+  // above is the enchantment path.
+  if (attacker.effects && attacker.effects.lifesteal && dmg > 0) {
+    const heal = Math.round(dmg * attacker.effects.lifesteal / 100);
+    if (heal > 0) {
+      attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
+      logLine(`${attacker.name} drains ${heal} HP.`, attacker.side === "party" ? "party" : "enemy");
+    }
+  }
+
   // Last Stand: a lethal blow on a party member is shrugged off once per day,
   // holding at a fraction of max HP instead of retreating.
   if (
@@ -220,6 +238,17 @@ function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" }
     target.lastStandUsed = true;
     target.hp = Math.max(target.retreatAt + 1, Math.round(target.maxHp * target.uniques.lastStand / 100));
     logLine(`${target.name} makes a Last Stand and holds at ${target.hp} HP!`, "skill");
+  }
+
+  // Last Stand as a shared effect (the enemy-mod path): any combatant carrying it
+  // survives one otherwise-lethal blow, holding at a fraction of max HP.
+  if (
+    target.hp <= target.retreatAt && target.effects && target.effects.lastStand &&
+    !target.lastStandUsed
+  ) {
+    target.lastStandUsed = true;
+    target.hp = Math.max(target.retreatAt + 1, Math.round(target.maxHp * target.effects.lastStand / 100));
+    logLine(`${target.name} refuses to fall, holding at ${target.hp} HP!`, "skill");
   }
 
   if (target.hp <= target.retreatAt) {
@@ -383,10 +412,23 @@ function resolveSkill(attacker, skill, foes) {
   }
 }
 
+// Count an enemy's skill cooldowns down by one at the start of its turn; a skill
+// that hits 0 is ready again. This is what keeps a big skill from firing every
+// single turn even when the enemy has the MP for it.
+function tickCooldowns(combatant) {
+  const cd = combatant.cooldowns;
+  if (!cd) return;
+  for (const id of Object.keys(cd)) {
+    cd[id] -= 1;
+    if (cd[id] <= 0) delete cd[id];
+  }
+}
+
 // Pick a skill for an enemy to use this turn, or null to fall back to a basic
 // attack. Enemies are simpler than the party: they fire the first skill in their
-// list they can afford (skills cost MP), aimed at the party. There's no "don't
-// waste an AoE" restraint — an enemy is happy to breathe fire on a lone target.
+// list that's both affordable (skills cost MP) and off cooldown, aimed at the
+// party. There's no "don't waste an AoE" restraint — an enemy is happy to
+// breathe fire on a lone target.
 function chooseEnemySkill(attacker, foes) {
   if (attacker.side !== "enemy" || !attacker.skills || !attacker.skills.length) return null;
   if (!foes.some(isActive)) return null;
@@ -395,17 +437,23 @@ function chooseEnemySkill(attacker, foes) {
     const skill = enemySkillById(id);
     if (!skill) continue;
     if (attacker.mp < (skill.cost || 0)) continue;
+    if (attacker.cooldowns && attacker.cooldowns[id] > 0) continue; // still cooling down
     return skill;
   }
   return null;
 }
 
-// Resolve an enemy skill: pay its MP once, then hit its targets among the still-
-// active party — the whole party for an `allTargets` skill, else its first few.
-// Damage is the skill's weighted stat sum off the enemy's statline.
+// Resolve an enemy skill: pay its MP once, start its cooldown, then hit its
+// targets among the still-active party — the whole party for an `allTargets`
+// skill, else its first few. Damage is the skill's weighted stat sum off the
+// enemy's statline.
 function resolveEnemySkill(attacker, skill, foes) {
   const cost = skill.cost || 0;
   attacker.mp = Math.max(0, attacker.mp - cost);
+  if (skill.cooldown) {
+    if (!attacker.cooldowns) attacker.cooldowns = {};
+    attacker.cooldowns[skill.id] = skill.cooldown;
+  }
   logLine(`${attacker.name} uses ${skill.name}!${cost ? ` (-${cost} MP)` : ""}`, "enemy");
 
   const active = foes.filter(isActive);
@@ -578,6 +626,8 @@ function battleStep() {
       const foes = attacker.side === "party" ? battle.enemies : battle.party;
       // Advance the Vampiric timer before the swing so this turn can heal.
       if (attacker.side === "party") vampireTick(attacker);
+      // Tick enemy skill cooldowns down at the start of its turn.
+      else tickCooldowns(attacker);
       // Use a skill if one's affordable and appropriate, else a basic attack.
       // Both sides can cast now: the party from its learned skills, enemies from
       // their assigned pool. A party member aims by its strategy; enemies just

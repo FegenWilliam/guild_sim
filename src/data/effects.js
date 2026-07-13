@@ -29,13 +29,30 @@
 //       system (systems/dot.js) — the same mechanic weapons and the Blazing
 //       enchantment use. See dot.js for the field meanings.
 //
+// The next few mirror unique enchantment mechanics (data/enchantments.js), so a
+// mod can hand out "Vampiric-style" lifesteal, an Andragolas-style HP pool, or a
+// Last Stand without reaching into the enchantment code:
+//
+//   { kind: "lifesteal", percent: 25 }
+//       Heals the attacker for `percent`% of the damage each of its hits deals
+//       (the Vampiric mechanic). Several stack (percentages add).
+//
+//   { kind: "maxHpMult", mult: 1.5 }
+//       Scales max HP when the combatant enters battle (1.5 = +50%), the
+//       Andragolas mechanic. Several stack multiplicatively.
+//
+//   { kind: "lastStand", percent: 25 }
+//       The first otherwise-lethal blow is survived once, leaving the combatant
+//       at `percent`% of max HP (the Last Stand mechanic). The strongest wins.
+//
 // To add a brand-new *kind* of effect, add a case here in `resolveEffects` and
 // the matching hook in systems/battle.js. To add a new mod or skill that reuses
 // an existing kind, you don't touch this file at all — just reference the kind.
 //
 // NOTE: the enchantment "uniques" (data/enchantments.js) are an older, parallel
-// set of bespoke combat hooks that predate this pool. New content should build
-// on the effects here; uniques can migrate onto this pool over time.
+// set of bespoke combat hooks that predate this pool. They still live there and
+// drive gear; the kinds above re-express the mechanics worth sharing so mods can
+// reuse them. Uniques can migrate onto this pool over time.
 
 // Collapse a list of effect descriptors into a single resolved bundle combat can
 // read cheaply each hit/turn. Unknown kinds are ignored, so half-written data
@@ -49,6 +66,9 @@ function resolveEffects(effectList) {
     extraActions: 0,    // additional turns per round
     ignoreDef: false,   // attacks bypass DEF
     dots: [],           // DOT sources applied on hit (systems/dot.js)
+    lifesteal: 0,       // % of damage dealt healed back (Vampiric)
+    maxHpMult: 1,       // multiplier on max HP at entry (Andragolas)
+    lastStand: 0,       // % of max HP to survive a lethal blow at, once (Last Stand)
   };
   for (const e of effectList || []) {
     if (!e) continue;
@@ -68,6 +88,15 @@ function resolveEffects(effectList) {
       case "dot":
         out.dots.push(dotSourceFrom(e));
         break;
+      case "lifesteal":
+        out.lifesteal += e.percent || 0;
+        break;
+      case "maxHpMult":
+        out.maxHpMult *= e.mult != null ? e.mult : 1;
+        break;
+      case "lastStand":
+        out.lastStand = Math.max(out.lastStand, e.percent || 0);
+        break;
       // Unknown kind → silently skipped.
     }
   }
@@ -82,4 +111,7 @@ const NO_EFFECTS = {
   extraActions: 0,
   ignoreDef: false,
   dots: [],
+  lifesteal: 0,
+  maxHpMult: 1,
+  lastStand: 0,
 };

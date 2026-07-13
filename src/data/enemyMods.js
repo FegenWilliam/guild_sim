@@ -59,6 +59,33 @@ const ENEMY_MODS = {
     description: "Its hits poison for 25% of the damage over 3 turns.",
     effects: [{ kind: "dot", key: "poison", percent: 25, turns: 3, label: "is poisoned for" }],
   },
+
+  // The next three lean on unique-enchantment mechanics re-expressed as effects
+  // (see data/effects.js), so a mod can grant them without any enchantment code.
+
+  // Drains HP from what it hits — the Vampiric mechanic.
+  vampiric: {
+    id: "vampiric",
+    name: "Vampiric",
+    description: "Heals for 25% of the damage it deals.",
+    effects: [{ kind: "lifesteal", percent: 25 }],
+  },
+
+  // A swollen health pool — the Andragolas mechanic.
+  giant: {
+    id: "giant",
+    name: "Giant",
+    description: "Has 50% more max HP.",
+    effects: [{ kind: "maxHpMult", mult: 1.5 }],
+  },
+
+  // Shrugs off a killing blow once — the Last Stand mechanic.
+  undying: {
+    id: "undying",
+    name: "Undying",
+    description: "Survives one lethal hit, holding at 25% HP.",
+    effects: [{ kind: "lastStand", percent: 25 }],
+  },
 };
 
 // Look up an enemy mod by id (undefined for an unknown id).

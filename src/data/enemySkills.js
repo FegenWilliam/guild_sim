@@ -4,9 +4,11 @@
 // aim at the *party*.
 //
 // An enemy is assigned skills by listing their ids on its definition (see
-// enemies.js `skills: [...]`). Each turn the battle picks the first affordable
-// one it's carrying, else it swings a basic attack. Using a skill spends the
-// enemy's MP (the MP stat finally does something).
+// enemies.js `skills: [...]`). Each turn the battle picks the first skill it's
+// carrying that is both affordable AND off cooldown, else it swings a basic
+// attack. Using a skill spends the enemy's MP (the MP stat finally does
+// something) and starts its cooldown, so a big skill can't fire every turn even
+// when the enemy has the MP to spare.
 //
 // ============================================================================
 // How to add an enemy skill
@@ -18,6 +20,9 @@
 //     name: "My Skill",           // shown in the battle log and the bestiary
 //     description: "...",         // one line shown on the enemy page
 //     cost: 10,                   // MP spent per use (0 = free)
+//     cooldown: 3,                // turns before it can be used again after a
+//                                 //   cast (counted in the enemy's own turns;
+//                                 //   0/omitted = usable every turn if affordable)
 //     power: { ATK: 2 },          // damage = sum of (stat × multiplier), read
 //                                 //   off the enemy's statline. Keys are stat
 //                                 //   names (ATK/MATK/DEF/…): { ATK: 2 } → 2×ATK,
@@ -39,6 +44,7 @@ const ENEMY_SKILLS = {
     name: "Throw Weapon",
     description: "Hurls a weapon — 2× ATK damage to one target.",
     cost: 8,
+    cooldown: 2,
     power: { ATK: 2 },
     maxTargets: 1,
     effects: [],
@@ -50,6 +56,7 @@ const ENEMY_SKILLS = {
     name: "Fire Breath",
     description: "Scorches the whole party — 3× ATK + 2× MATK to everyone.",
     cost: 20,
+    cooldown: 3,
     power: { ATK: 3, MATK: 2 },
     allTargets: true,
     effects: [],
@@ -84,4 +91,12 @@ function enemySkillTargets(skill, activeFoes) {
 // path reads, shared with player skills.)
 function enemySkillIgnoresDef(skill) {
   return (skill.effects || []).includes("ignoreDef");
+}
+
+// A compact "cost & cadence" line for the bestiary/clipboard, e.g.
+// "8 MP · 2-turn cooldown" or just "20 MP" when there's no cooldown.
+function enemySkillMeta(skill) {
+  const parts = [`${skill.cost || 0} MP`];
+  if (skill.cooldown) parts.push(`${skill.cooldown}-turn cooldown`);
+  return parts.join(" · ");
 }
