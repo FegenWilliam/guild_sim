@@ -19,6 +19,13 @@
 // (Crossbow combines both.) Only flat bonuses fold into a wearer's statline for
 // now; scaled bonuses depend on the wearer and land when equipping is wired up.
 //
+// A weapon (or any gear) may also carry an innate `dot`, a damage-over-time it
+// applies on hit — the non-enchantment path into the DOT system (systems/dot.js):
+//   dot: { key: "poison", percent: 30, turns: 3, label: "is poisoned for" }
+// `percent` is the share of each hit that becomes the per-turn tick, `key` lets
+// distinct DOT types (poison vs a Blazing burn) stack, and `label` is the log
+// verb. This is a property of the item itself, wholly separate from enchantments.
+//
 // Active slots: helmet, chestpiece, leg armor, boots, weapon, one accessory,
 // and a bag. A second accessory slot lives in the model but is `locked`, so it
 // stays hidden until it's unlocked later (e.g. via a guild perk). Rendering
@@ -65,6 +72,12 @@ function equipmentBonuses(adventurer) {
       if (b.perStat) continue; // scaled bonus — not folded in yet
       totals[b.stat] = (totals[b.stat] || 0) + b.value;
     }
+    // Rolled enchantment modifiers are flat { stat, value } descriptors and
+    // stack on top just like flat gear bonuses.
+    for (const mod of item.modifiers || []) {
+      if (!mod) continue;
+      totals[mod.stat] = (totals[mod.stat] || 0) + mod.value;
+    }
   }
   return totals;
 }
@@ -93,6 +106,61 @@ function inventoryHasSpace(adventurer) {
 // the item in the next open slot.
 function addToInventory(adventurer, item) {
   if (!inventoryHasSpace(adventurer)) return false;
+  adventurer.inventory.push(item);
+  return true;
+}
+
+// --- Equipping -------------------------------------------------------------
+//
+// An equipment item's `slot` names the slot it goes in (matching an
+// EQUIPMENT_SLOTS id). Equipping moves it from the bag onto the body; if that
+// slot was already filled, the old piece swaps back into the freed bag space.
+// A bag *is* equipment too, so swapping to a smaller bag (or unequipping one)
+// can shrink capacity — those moves are refused when they'd overflow the bag.
+
+// Equip the inventory item at `index` into its matching slot. Returns whether it
+// equipped (false if it isn't equipment, its slot is missing/locked, or a bag
+// swap would leave the bag over capacity).
+function equipFromInventory(adventurer, index) {
+  const item = adventurer.inventory[index];
+  if (!isEquipment(item)) return false;
+  const slot = EQUIPMENT_SLOTS.find((s) => s.id === item.slot);
+  if (!slot || slot.locked) return false;
+
+  const prev = adventurer.equipment[item.slot];
+  adventurer.equipment[item.slot] = item;
+  adventurer.inventory.splice(index, 1);
+
+  // Any displaced piece returns to the bag. With `equipment` already updated,
+  // inventorySlots() reflects the new bag, so this also catches a shrinking
+  // bag swap that leaves no room for the old one.
+  if (prev) {
+    if (adventurer.inventory.length + 1 > inventorySlots(adventurer)) {
+      adventurer.inventory.splice(index, 0, item); // undo
+      adventurer.equipment[item.slot] = prev;
+      return false;
+    }
+    adventurer.inventory.push(prev);
+  } else if (adventurer.inventory.length > inventorySlots(adventurer)) {
+    adventurer.inventory.splice(index, 0, item); // undo (shrinking bag)
+    adventurer.equipment[item.slot] = null;
+    return false;
+  }
+  return true;
+}
+
+// Unequip the item in `slotId` back into the bag. Returns whether it came off
+// (false if the slot is empty, or removing a bag would shrink capacity below
+// what's already carried — the bag itself needs a slot too).
+function unequipToInventory(adventurer, slotId) {
+  const item = adventurer.equipment[slotId];
+  if (!item) return false;
+
+  adventurer.equipment[slotId] = null;
+  if (adventurer.inventory.length + 1 > inventorySlots(adventurer)) {
+    adventurer.equipment[slotId] = item; // undo
+    return false;
+  }
   adventurer.inventory.push(item);
   return true;
 }
@@ -149,6 +217,16 @@ const SHOP_EQUIPMENT = [
     price: 90,
     bonuses: [{ stat: "DEF", value: 4 }],
   },
+  {
+    // A weapon whose bite lingers: every hit poisons the target for 30% of the
+    // damage over 3 turns — an innate DOT, no enchantment required.
+    id: "venomFang",
+    name: "Venom Fang",
+    slot: "weapon",
+    price: 200,
+    bonuses: [{ stat: "ATK", value: 6 }],
+    dot: { key: "poison", percent: 30, turns: 3, label: "is poisoned for" },
+  },
 ];
 
 function shopItemById(id) {
@@ -163,7 +241,7 @@ function isEquipment(item) {
 // copied (so a template is never mutated) and six empty modifier slots are
 // reserved for enchantments.
 function createEquipmentItem(def) {
-  return {
+  const item = {
     type: "equipment",
     equipId: def.id,
     name: def.name,
@@ -172,6 +250,17 @@ function createEquipmentItem(def) {
     modifiers: new Array(EQUIPMENT_MODIFIER_SLOTS).fill(null),
     locked: false,
   };
+  // Innate damage-over-time rides along on the instance so it persists in saves.
+  if (def.dot) item.dot = { ...def.dot };
+  return item;
+}
+
+// Human-readable text for an item's innate DOT, e.g. "Poison — 30% of hit / 3
+// turns". Returns "" for gear with no innate DOT.
+function formatItemDot(dot) {
+  if (!dot) return "";
+  const name = dot.key ? dot.key[0].toUpperCase() + dot.key.slice(1) : "DOT";
+  return `${name} — ${dot.percent}% of hit / ${dot.turns} turns`;
 }
 
 // Human-readable text for one equipment bonus descriptor:

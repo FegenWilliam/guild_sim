@@ -67,6 +67,7 @@ function init() {
   });
   shopBackBtn.addEventListener("click", backToShopGrid);
   shopBuyBtn.addEventListener("click", buyEquipment);
+  enchantBackBtn.addEventListener("click", backToEnchantGrid);
 
   // Allow cancelling a hire by clicking the backdrop or pressing Escape.
   classModalEl.addEventListener("click", (e) => {

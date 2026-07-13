@@ -77,6 +77,20 @@ const shopPriceEl = document.getElementById("shopPrice");
 const shopBuyBtn = document.getElementById("shopBuy");
 const shopNoteEl = document.getElementById("shopNote");
 
+// Town view: the Enchanter (stone wallet, item grid, item detail).
+const enchantServiceEl = document.getElementById("enchantService");
+const stoneWalletEl = document.getElementById("stoneWallet");
+const enchantGridEl = document.getElementById("enchantGrid");
+const enchantEmptyEl = document.getElementById("enchantEmpty");
+const enchantDetailEl = document.getElementById("enchantDetail");
+const enchantBackBtn = document.getElementById("enchantBack");
+const enchantItemNameEl = document.getElementById("enchantItemName");
+const enchantItemSlotEl = document.getElementById("enchantItemSlot");
+const enchantBonusesEl = document.getElementById("enchantBonuses");
+const enchantModifiersEl = document.getElementById("enchantModifiers");
+const enchantRollsEl = document.getElementById("enchantRolls");
+const enchantNoteEl = document.getElementById("enchantNote");
+
 // Dungeon view: list, detail, enemy detail.
 const dungeonListEl = document.getElementById("dungeonList");
 const dungeonDetailEl = document.getElementById("dungeonDetail");

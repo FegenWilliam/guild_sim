@@ -20,9 +20,11 @@ function renderTown() {
   townNavButtons.forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.town === state.townService);
   });
-  // Every service's panel hides unless it's the active one. Just the shop today.
+  // Every service's panel hides unless it's the active one.
   shopServiceEl.classList.toggle("hidden", state.townService !== "shop");
+  enchantServiceEl.classList.toggle("hidden", state.townService !== "enchant");
   if (state.townService === "shop") renderShop();
+  else if (state.townService === "enchant") renderEnchant();
 }
 
 // --- Equipment shop navigation -------------------------------------------
@@ -111,6 +113,13 @@ function renderShopDetail(def) {
     row.textContent = formatBonus(b);
     shopBonusesEl.appendChild(row);
   });
+  // Innate DOT (e.g. Venom Fang) reads alongside the stat bonuses.
+  if (def.dot) {
+    const row = document.createElement("div");
+    row.className = "shop-bonus shop-dot";
+    row.textContent = formatItemDot(def.dot);
+    shopBonusesEl.appendChild(row);
+  }
 
   // Six empty modifier slots — reserved for the enchantment feature, kept open.
   shopModifiersEl.innerHTML = "";

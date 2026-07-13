@@ -18,6 +18,7 @@ function hireNewbie() {
 
 function selectAdventurer(id) {
   state.selectedId = id;
+  equipPickerSlot = null; // close any open picker from the previous adventurer
   render();
 }
 
@@ -189,6 +190,19 @@ function renderStats(selected) {
   });
 }
 
+// Which empty slot has its "pick an item" list open, or null. Transient UI —
+// never saved, and reset whenever the selection changes.
+let equipPickerSlot = null;
+
+// The bag items that fit a given slot, paired with their inventory index.
+function equippableForSlot(adventurer, slotId) {
+  const out = [];
+  adventurer.inventory.forEach((item, index) => {
+    if (isEquipment(item) && item.slot === slotId) out.push({ item, index });
+  });
+  return out;
+}
+
 function renderEquipment(selected) {
   equipmentEl.innerHTML = "";
   EQUIPMENT_SLOTS.forEach((slot) => {
@@ -205,19 +219,83 @@ function renderEquipment(selected) {
 
     const valueSpan = document.createElement("span");
     valueSpan.className = "equip-item";
-    // No item system yet, so every slot reads "Empty" for now.
     valueSpan.textContent = item ? item.name : "Empty";
+    if (item) valueSpan.title = itemTooltip(item);
 
-    row.append(nameSpan, valueSpan);
+    // Filled slots offer Unequip; empty slots open a picker of matching gear.
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "equip-btn";
+    if (item) {
+      action.textContent = "Unequip";
+      action.addEventListener("click", () => unequipSlot(selected, slot.id));
+    } else {
+      const open = equipPickerSlot === slot.id;
+      const candidates = equippableForSlot(selected, slot.id);
+      action.textContent = open ? "Cancel" : "Equip";
+      action.disabled = !open && candidates.length === 0;
+      action.addEventListener("click", () => toggleEquipPicker(slot.id));
+    }
+
+    row.append(nameSpan, valueSpan, action);
     equipmentEl.appendChild(row);
+
+    // Inline list of bag items that fit this open, empty slot.
+    if (!item && equipPickerSlot === slot.id) {
+      const picker = document.createElement("div");
+      picker.className = "equip-picker";
+      const candidates = equippableForSlot(selected, slot.id);
+      if (!candidates.length) {
+        const none = document.createElement("p");
+        none.className = "equip-picker-empty";
+        none.textContent = "No gear in the bag for this slot.";
+        picker.appendChild(none);
+      } else {
+        candidates.forEach(({ item: bagItem, index }) => {
+          const opt = document.createElement("button");
+          opt.type = "button";
+          opt.className = "equip-option";
+          opt.textContent = bagItem.name;
+          opt.title = itemTooltip(bagItem);
+          opt.addEventListener("click", () => equipFromBag(selected, index));
+          picker.appendChild(opt);
+        });
+      }
+      equipmentEl.appendChild(picker);
+    }
   });
+}
+
+// Open/close the item picker under an empty slot (only one open at a time).
+function toggleEquipPicker(slotId) {
+  equipPickerSlot = equipPickerSlot === slotId ? null : slotId;
+  renderEquipment(getSelected());
+}
+
+// Equip the bag item at `index`; a full re-render refreshes the statline (gear
+// bonuses and enchantments now count), the bag grid, and autosaves.
+function equipFromBag(adventurer, index) {
+  if (equipFromInventory(adventurer, index)) {
+    equipPickerSlot = null;
+    render();
+  }
+}
+
+function unequipSlot(adventurer, slotId) {
+  if (!unequipToInventory(adventurer, slotId)) {
+    flashSaveNote("Bag is full — free a slot first.");
+    return;
+  }
+  render();
 }
 
 // A hover tooltip describing an inventory item.
 function itemTooltip(item) {
   if (isLoot(item)) return `${item.name} — sells for ${item.price}g`;
   if (isEquipment(item)) {
-    return `${item.name} (${slotLabel(item.slot)}) — ${item.bonuses.map(formatBonus).join(", ")}`;
+    let text = `${item.name} (${slotLabel(item.slot)}) — ${item.bonuses.map(formatBonus).join(", ")}`;
+    if (item.dot) text += ` · ${formatItemDot(item.dot)}`;
+    return text;
   }
   return item.name;
 }

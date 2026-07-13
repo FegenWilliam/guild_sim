@@ -7,6 +7,10 @@ const state = {
   day: 1,
   maxAdventurers: BASE_MAX_ADVENTURERS,
   adventurers: [],
+  // Enchantment stones — a guild-wide counted resource (not inventory items),
+  // keyed by tier id. No cap: a full bag never blocks a stone drop. Spent on the
+  // Enchanter to roll modifiers onto gear (see data/enchantments.js).
+  enchantStones: emptyEnchantStones(),
   selectedId: null,
   nextId: 1,
   activeTab: "stats", // "stats" | "equipment" | "inventory" | "skills"
@@ -21,7 +25,12 @@ const state = {
   selectedEnemyId: null,
   // Town view: which service is open, and where the Equipment Shop is (its grid
   // of stock vs. a single item's detail page). All transient — never saved.
-  townService: "shop", // only the Equipment Shop exists so far
+  townService: "shop", // "shop" | "enchant"
   shopScreen: "grid", // "grid" | "detail"
   shopItemId: null,
+  // Enchanter service: which of the selected adventurer's equipment items is
+  // being enchanted (its inventory index, or null for the item grid) and which
+  // of its six modifier slots is selected to roll into. All transient.
+  enchantItemIndex: null,
+  enchantSlotIndex: null,
 };

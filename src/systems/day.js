@@ -22,6 +22,10 @@ function healParty() {
 function passDay() {
   state.day += 1;
   healParty();
+  // A new day also rearms the once-per-day enchantments (MP Boost, Last Stand).
+  state.adventurers.forEach((a) => {
+    a.enchantDaily = { mpBoost: false, lastStand: false };
+  });
   saveGame();
   render();
 }
