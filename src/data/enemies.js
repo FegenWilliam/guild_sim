@@ -8,6 +8,8 @@
 //     name: "My Enemy",
 //     stats: { HP: 0, MP: 0, ATK: 0, DEF: 0, CRIT: 0, "CRIT DMG": 100, EVA: 0 },
 //     spawn: { 2: 35, 3: 20, 4: 10, 5: 5 },  // optional, see below
+//     skills: ["throwWeapon"],  // optional, see below
+//     mods: ["hardSkin"],       // optional, see below
 //     loot: [                   // optional, see below
 //       { name: "Trophy", chance: 20, price: 5 },
 //     ],
@@ -15,6 +17,15 @@
 //
 // Then list its id on a dungeon (see dungeons.js). Entering a dungeon always
 // rolls a pack: each listed enemy shows up 1–5 times.
+//
+// `skills` is a list of enemy-skill ids (from data/enemySkills.js). In battle
+// the enemy uses the first one it can afford (skills cost MP), else it swings a
+// basic attack. Omit for an enemy that only ever attacks.
+//
+// `mods` is a list of enemy-mod ids (from data/enemyMods.js) — named bundles of
+// combat effects that make the enemy tougher (e.g. Hard Skin, Agile). An enemy
+// can carry several. Omit for a plain enemy. Both `skills` and `mods` pull from
+// shared pools, so you extend them by editing those catalogs, not this file.
 //
 // `loot` is a drop table: each entry is one item that *may* fall when this enemy
 // is killed. `chance` is an independent percent roll per kill (so two 20% items
@@ -45,6 +56,12 @@ const ENEMIES = {
     },
     // Goblins travel in packs.
     spawn: { 2: 35, 3: 20, 4: 10, 5: 5 },
+    // A taste of the new systems: a goblin can hurl its weapon for a heavy hit
+    // (it has just enough MP for one throw per fight) and its hide shrugs off a
+    // fifth of every blow. Tune or clear these freely — they're just ids into
+    // the enemy-skill and enemy-mod pools.
+    skills: ["throwWeapon"],
+    mods: ["hardSkin"],
     // Each has a 1-in-5 shot at dropping either trophy on death.
     loot: [
       { name: "Rusty Sword", chance: 20, price: 8 },

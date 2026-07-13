@@ -90,11 +90,21 @@ function partyCombatant(adventurer) {
 // Turn an enemy definition into a battle combatant. Enemies fight to 0 HP.
 function enemyCombatant(enemy) {
   const s = enemy.stats;
+  // Mods resolve to a combined effect bundle (damage multipliers, extra actions,
+  // DOT sources, …) the same way a party member's uniques do (data/enemyMods.js).
+  const effects = gatherModEffects(enemy);
+  // A Giant-style mod scales the HP pool up front, before the enemy enters.
+  const maxHp = Math.round(s.HP * effects.maxHpMult);
+  // Only a skill-carrying enemy needs an MP pool; skill-less ones show no MP bar.
+  const canCast = (enemy.skills || []).length > 0;
   return {
     name: enemy.name,
     side: "enemy",
-    hp: s.HP,
-    maxHp: s.HP,
+    hp: maxHp,
+    maxHp,
+    // MP is spent by enemy skills; 0/0 for a non-caster so no bar renders.
+    mp: canCast ? s.MP : 0,
+    maxMp: canCast ? s.MP : 0,
     atk: s.ATK,
     matk: s.MATK || 0,
     def: s.DEF,
@@ -104,16 +114,31 @@ function enemyCombatant(enemy) {
     magic: false,
     retreatAt: 0,
     status: "active",
+    // The full statline (for skill damage) and the skill ids this enemy can use.
+    stats: s,
+    skills: enemy.skills || [],
+    // Resolved mod effects, read by combat (dealHit, the round builder).
+    effects,
+    // Per-skill cooldowns (skillId → turns remaining) and the once-per-fight
+    // Last Stand flag, both mod-driven combat state.
+    cooldowns: {},
+    lastStandUsed: false,
+    // Mod display names, tagged on the battle card so a modded foe reads clearly.
+    mods: enemyModNames(enemy),
     // The loot table rides along so a kill can roll drops without another
     // lookup back into ENEMIES.
     loot: enemy.loot || [],
     // The XP this enemy is worth also drives its enchantment-stone drop odds,
     // so cache it once here rather than re-deriving from stats on every kill.
     xp: enemyXP(enemy),
-    // Enemies can catch a party member's DOT, and may inflict one of their own
-    // if their definition carries an innate `dot` (systems/dot.js).
+    // Enemies can catch a party member's DOT, and may inflict one of their own —
+    // from an innate `dot` on the definition and/or a mod's DOT effect (a
+    // Venomous bite, say), all routed through systems/dot.js.
     dots: {},
-    dotSources: enemy.dot ? [dotSourceFrom(enemy.dot)] : [],
+    dotSources: [
+      ...(enemy.dot ? [dotSourceFrom(enemy.dot)] : []),
+      ...effects.dots,
+    ],
   };
 }
 
@@ -165,6 +190,13 @@ function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" }
   const crit = roll(attacker.crit);
   if (crit) dmg *= attacker.critDmg / 100;
 
+  // Mod effects scale the hit: the attacker's damage-dealt multiplier (Berserk)
+  // and the target's damage-taken multiplier (Hard Skin). Combatants without
+  // effects fall back to 1×. DOT ticks skip this path, so Hard Skin only softens
+  // direct attacks — as its wording promises.
+  if (attacker.effects) dmg *= attacker.effects.damageDealtMult;
+  if (target.effects) dmg *= target.effects.damageTakenMult;
+
   dmg = Math.max(1, Math.round(dmg));
   target.hp -= dmg;
 
@@ -185,6 +217,18 @@ function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" }
     attacker.vampProc = false;
   }
 
+  // Lifesteal (the Vampiric mechanic as a shared effect): a combatant carrying it
+  // drains a cut of every hit's damage. Resolved before the death check so a
+  // killing blow still heals. This is the enemy-mod path; the party's Vampiric
+  // above is the enchantment path.
+  if (attacker.effects && attacker.effects.lifesteal && dmg > 0) {
+    const heal = Math.round(dmg * attacker.effects.lifesteal / 100);
+    if (heal > 0) {
+      attacker.hp = Math.min(attacker.maxHp, attacker.hp + heal);
+      logLine(`${attacker.name} drains ${heal} HP.`, attacker.side === "party" ? "party" : "enemy");
+    }
+  }
+
   // Last Stand: a lethal blow on a party member is shrugged off once per day,
   // holding at a fraction of max HP instead of retreating.
   if (
@@ -194,6 +238,17 @@ function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" }
     target.lastStandUsed = true;
     target.hp = Math.max(target.retreatAt + 1, Math.round(target.maxHp * target.uniques.lastStand / 100));
     logLine(`${target.name} makes a Last Stand and holds at ${target.hp} HP!`, "skill");
+  }
+
+  // Last Stand as a shared effect (the enemy-mod path): any combatant carrying it
+  // survives one otherwise-lethal blow, holding at a fraction of max HP.
+  if (
+    target.hp <= target.retreatAt && target.effects && target.effects.lastStand &&
+    !target.lastStandUsed
+  ) {
+    target.lastStandUsed = true;
+    target.hp = Math.max(target.retreatAt + 1, Math.round(target.maxHp * target.effects.lastStand / 100));
+    logLine(`${target.name} refuses to fall, holding at ${target.hp} HP!`, "skill");
   }
 
   if (target.hp <= target.retreatAt) {
@@ -357,6 +412,59 @@ function resolveSkill(attacker, skill, foes) {
   }
 }
 
+// Count an enemy's skill cooldowns down by one at the start of its turn; a skill
+// that hits 0 is ready again. This is what keeps a big skill from firing every
+// single turn even when the enemy has the MP for it.
+function tickCooldowns(combatant) {
+  const cd = combatant.cooldowns;
+  if (!cd) return;
+  for (const id of Object.keys(cd)) {
+    cd[id] -= 1;
+    if (cd[id] <= 0) delete cd[id];
+  }
+}
+
+// Pick a skill for an enemy to use this turn, or null to fall back to a basic
+// attack. Enemies are simpler than the party: they fire the first skill in their
+// list that's both affordable (skills cost MP) and off cooldown, aimed at the
+// party. There's no "don't waste an AoE" restraint — an enemy is happy to
+// breathe fire on a lone target.
+function chooseEnemySkill(attacker, foes) {
+  if (attacker.side !== "enemy" || !attacker.skills || !attacker.skills.length) return null;
+  if (!foes.some(isActive)) return null;
+
+  for (const id of attacker.skills) {
+    const skill = enemySkillById(id);
+    if (!skill) continue;
+    if (attacker.mp < (skill.cost || 0)) continue;
+    if (attacker.cooldowns && attacker.cooldowns[id] > 0) continue; // still cooling down
+    return skill;
+  }
+  return null;
+}
+
+// Resolve an enemy skill: pay its MP once, start its cooldown, then hit its
+// targets among the still-active party — the whole party for an `allTargets`
+// skill, else its first few. Damage is the skill's weighted stat sum off the
+// enemy's statline.
+function resolveEnemySkill(attacker, skill, foes) {
+  const cost = skill.cost || 0;
+  attacker.mp = Math.max(0, attacker.mp - cost);
+  if (skill.cooldown) {
+    if (!attacker.cooldowns) attacker.cooldowns = {};
+    attacker.cooldowns[skill.id] = skill.cooldown;
+  }
+  logLine(`${attacker.name} uses ${skill.name}!${cost ? ` (-${cost} MP)` : ""}`, "enemy");
+
+  const active = foes.filter(isActive);
+  const targets = enemySkillTargets(skill, active);
+  if (!targets.length) return;
+
+  const base = enemySkillDamage(attacker.stats, skill);
+  const ignoreDef = enemySkillIgnoresDef(skill);
+  targets.forEach((t) => dealHit(attacker, t, base, { ignoreDef, label: skill.name }));
+}
+
 // After a party member acts, advance its Sniper's Focus: a basic attack banks a
 // stack (up to the cap), a skill spends the built-up focus and resets to zero.
 function updateSnipe(attacker, usedSkill) {
@@ -479,6 +587,18 @@ function advanceWave() {
   logLine(`Wave ${battle.wave} approaches!`, "wave");
 }
 
+// Build a round's turn order from the active combatants, giving each an extra
+// consecutive turn per `extraActions` its mods grant (Agile → acts twice). A
+// combatant with no effects just takes its single turn.
+function buildRoundQueue(combatants) {
+  const queue = [];
+  for (const c of combatants) {
+    const extra = c.effects ? c.effects.extraActions : 0;
+    for (let i = 0; i < 1 + extra; i++) queue.push(c);
+  }
+  return queue;
+}
+
 // Advance the battle by one attack. When the round's queue empties, a fresh
 // round is built from whoever is still active (party first, then enemies).
 function battleStep() {
@@ -486,7 +606,7 @@ function battleStep() {
 
   if (battle.queue.length === 0) {
     battle.round += 1;
-    battle.queue = [...battle.party, ...battle.enemies].filter(isActive);
+    battle.queue = buildRoundQueue([...battle.party, ...battle.enemies].filter(isActive));
   }
 
   let attacker = null;
@@ -506,11 +626,19 @@ function battleStep() {
       const foes = attacker.side === "party" ? battle.enemies : battle.party;
       // Advance the Vampiric timer before the swing so this turn can heal.
       if (attacker.side === "party") vampireTick(attacker);
-      // Use a skill if one's affordable and appropriate, else a basic attack. A
-      // party member aims by its strategy; enemies just hit the first foe up.
-      const skill = chooseSkill(attacker, foes);
+      // Tick enemy skill cooldowns down at the start of its turn.
+      else tickCooldowns(attacker);
+      // Use a skill if one's affordable and appropriate, else a basic attack.
+      // Both sides can cast now: the party from its learned skills, enemies from
+      // their assigned pool. A party member aims by its strategy; enemies just
+      // hit the first foe up.
+      const skill =
+        attacker.side === "party"
+          ? chooseSkill(attacker, foes)
+          : chooseEnemySkill(attacker, foes);
       if (skill) {
-        resolveSkill(attacker, skill, foes);
+        if (attacker.side === "party") resolveSkill(attacker, skill, foes);
+        else resolveEnemySkill(attacker, skill, foes);
       } else {
         const target =
           attacker.side === "party"
