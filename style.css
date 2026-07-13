@@ -410,6 +410,26 @@ h1 {
   color: #d9b3ff;
 }
 
+/* Enemy skill/mod rows in the bestiary: the description can be long, so let the
+   row grow and the value wrap under a left-aligned, muted description. */
+.stat-row.enemy-power-row {
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.stat-row.enemy-power-row .stat-label {
+  color: #ffd7a0;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.stat-row.enemy-power-row .stat-value {
+  text-align: right;
+  white-space: normal;
+  color: #b9adcc;
+  font-weight: 500;
+}
+
 /* --- Equipment slots --- */
 
 .equipment {
@@ -1130,6 +1150,24 @@ h1 {
   font-size: 0.75rem;
   font-weight: 600;
   color: #8fb8ff;
+}
+
+/* Mod tags on an enemy battle card — small "danger" chips. */
+.battle-unit-mods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.3rem;
+}
+
+.battle-unit-mod {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #ffd7a0;
+  background: #3a2417;
+  border: 1px solid #6e4322;
+  border-radius: 0.35rem;
+  padding: 0.05rem 0.35rem;
 }
 
 .hpbar {

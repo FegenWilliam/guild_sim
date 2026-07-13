@@ -29,13 +29,27 @@ function battleUnitCard(combatant) {
 
   card.append(head, bar);
 
-  // Party members carry an MP pool that skills spend — show it under the HP bar
-  // so a drain is visible as skills fire. Enemies have no skills, so no MP line.
+  // An MP pool that skills spend — shown under the HP bar so a drain is visible
+  // as skills fire. Party members always have one; an enemy only if it can cast.
   if (combatant.maxMp) {
     const mp = document.createElement("div");
     mp.className = "battle-unit-mp";
     mp.textContent = `MP ${combatant.mp} / ${combatant.maxMp}`;
     card.appendChild(mp);
+  }
+
+  // Modded enemies wear their mod names as small tags, so a tougher foe reads at
+  // a glance (the mods themselves resolve silently in combat).
+  if (combatant.mods && combatant.mods.length) {
+    const tags = document.createElement("div");
+    tags.className = "battle-unit-mods";
+    combatant.mods.forEach((name) => {
+      const tag = document.createElement("span");
+      tag.className = "battle-unit-mod";
+      tag.textContent = name;
+      tags.appendChild(tag);
+    });
+    card.appendChild(tags);
   }
 
   return card;

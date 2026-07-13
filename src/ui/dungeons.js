@@ -54,6 +54,14 @@ function enemyClipboardText(enemy) {
     lines.push(`${stat}: ${formatValue(stat, enemy.stats[stat])}`);
   }
   lines.push(`XP: ${formatXP(enemyXP(enemy))}`);
+  (enemy.skills || []).forEach((id) => {
+    const skill = enemySkillById(id);
+    if (skill) lines.push(`Skill: ${skill.name} — ${skill.description}`);
+  });
+  (enemy.mods || []).forEach((id) => {
+    const mod = enemyModById(id);
+    if (mod) lines.push(`Mod: ${mod.name} — ${mod.description}`);
+  });
   return lines.join("\n");
 }
 
@@ -179,4 +187,15 @@ function renderEnemyDetail() {
   });
   // XP this enemy is worth (the hidden spawn stat is deliberately not shown).
   addRow("XP", formatXP(enemyXP(enemy)), "xp-row");
+
+  // Skills and mods, if any: one row each, name in the label and its one-line
+  // description in the value. These come from the shared enemy-skill/-mod pools.
+  (enemy.skills || []).forEach((id) => {
+    const skill = enemySkillById(id);
+    if (skill) addRow(`Skill — ${skill.name}`, skill.description, "enemy-power-row");
+  });
+  (enemy.mods || []).forEach((id) => {
+    const mod = enemyModById(id);
+    if (mod) addRow(`Mod — ${mod.name}`, mod.description, "enemy-power-row");
+  });
 }
