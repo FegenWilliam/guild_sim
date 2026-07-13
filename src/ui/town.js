@@ -113,6 +113,13 @@ function renderShopDetail(def) {
     row.textContent = formatBonus(b);
     shopBonusesEl.appendChild(row);
   });
+  // Innate DOT (e.g. Venom Fang) reads alongside the stat bonuses.
+  if (def.dot) {
+    const row = document.createElement("div");
+    row.className = "shop-bonus shop-dot";
+    row.textContent = formatItemDot(def.dot);
+    shopBonusesEl.appendChild(row);
+  }
 
   // Six empty modifier slots — reserved for the enchantment feature, kept open.
   shopModifiersEl.innerHTML = "";

@@ -1339,6 +1339,11 @@ h1 {
   border-radius: 0.5rem;
 }
 
+/* An innate damage-over-time reads in a caustic green to set it apart. */
+.shop-bonus.shop-dot {
+  color: #b7e06a;
+}
+
 .modifier-heading {
   font-size: 0.85rem;
   font-weight: 700;

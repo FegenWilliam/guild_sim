@@ -293,7 +293,9 @@ function unequipSlot(adventurer, slotId) {
 function itemTooltip(item) {
   if (isLoot(item)) return `${item.name} — sells for ${item.price}g`;
   if (isEquipment(item)) {
-    return `${item.name} (${slotLabel(item.slot)}) — ${item.bonuses.map(formatBonus).join(", ")}`;
+    let text = `${item.name} (${slotLabel(item.slot)}) — ${item.bonuses.map(formatBonus).join(", ")}`;
+    if (item.dot) text += ` · ${formatItemDot(item.dot)}`;
+    return text;
   }
   return item.name;
 }

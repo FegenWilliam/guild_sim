@@ -72,7 +72,11 @@ function partyCombatant(adventurer) {
     status: "active",
     // Enchantment combat state (see systems/battle.js unique hooks):
     uniques: u,
-    dot: null,             // an incoming Blazing burn { dmg, turns }
+    // Damage-over-time (systems/dot.js): `dots` are burns/poisons currently on
+    // this combatant; `dotSources` are the ones it inflicts on hit (innate gear
+    // DOT + the Blazing enchantment).
+    dots: {},
+    dotSources: gatherDotSources(adventurer, u),
     vampCounter: 0,        // turns toward the next Vampiric heal
     vampProc: false,       // this turn's damage heals (Vampiric)
     ampUses: {},           // per-skill cast count (Amplified Mana)
@@ -106,9 +110,10 @@ function enemyCombatant(enemy) {
     // The XP this enemy is worth also drives its enchantment-stone drop odds,
     // so cache it once here rather than re-deriving from stats on every kill.
     xp: enemyXP(enemy),
-    // Enemies carry no uniques, but they can still catch a party member's
-    // Blazing burn, so they get a DOT slot too.
-    dot: null,
+    // Enemies can catch a party member's DOT, and may inflict one of their own
+    // if their definition carries an innate `dot` (systems/dot.js).
+    dots: {},
+    dotSources: enemy.dot ? [dotSourceFrom(enemy.dot)] : [],
   };
 }
 
@@ -207,43 +212,11 @@ function dealHit(attacker, target, baseDamage, { ignoreDef = false, label = "" }
     return; // downed: nothing left to shield or burn
   }
 
-  // Survived the hit — re-arm the shield and lay any Blazing burn.
+  // Survived the hit — re-arm the shield and lay any damage-over-time. The DOT
+  // system (systems/dot.js) owns which sources apply (an innate weapon DOT, the
+  // Blazing enchantment, …); this hit just feeds it the damage dealt.
   if (shielded) target.shieldActive = target.uniques.magicalShield;
-
-  // Blazing: a party hit burns a live enemy for a share of the damage dealt. A
-  // bigger burn replaces and refreshes a smaller one; a smaller one is ignored.
-  if (attacker.side === "party" && attacker.uniques && attacker.uniques.blazing && target.side === "enemy") {
-    const perTurn = Math.round(dmg * attacker.uniques.blazing / 100);
-    if (perTurn > 0 && (!target.dot || perTurn > target.dot.dmg)) {
-      target.dot = { dmg: perTurn, turns: BLAZING_DURATION };
-    }
-  }
-}
-
-// Tick a combatant's Blazing burn at the start of its turn: burn damage skips
-// DEF and evasion, decrements the timer, and can finish the victim (rolling its
-// loot/stones just like a normal kill).
-function tickDot(combatant) {
-  if (!combatant.dot) return;
-  const dmg = combatant.dot.dmg;
-  combatant.hp -= dmg;
-  logLine(`${combatant.name} burns for ${dmg}.`, "party");
-  combatant.dot.turns -= 1;
-  if (combatant.dot.turns <= 0) combatant.dot = null;
-
-  if (combatant.hp <= combatant.retreatAt) {
-    combatant.hp = combatant.retreatAt;
-    combatant.status = combatant.side === "party" ? "out" : "down";
-    combatant.dot = null;
-    logLine(
-      `${combatant.name} ${combatant.side === "party" ? "retreats at 1 HP." : "is defeated!"}`,
-      combatant.side === "party" ? "retreat" : "defeat"
-    );
-    if (combatant.side === "enemy") {
-      awardLoot(combatant);
-      awardEnchantStones(combatant);
-    }
-  }
+  applyHitDots(attacker, target, dmg);
 }
 
 // Roll a defeated enemy's loot and stash each drop in the first party member who

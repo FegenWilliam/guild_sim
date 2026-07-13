@@ -19,6 +19,13 @@
 // (Crossbow combines both.) Only flat bonuses fold into a wearer's statline for
 // now; scaled bonuses depend on the wearer and land when equipping is wired up.
 //
+// A weapon (or any gear) may also carry an innate `dot`, a damage-over-time it
+// applies on hit — the non-enchantment path into the DOT system (systems/dot.js):
+//   dot: { key: "poison", percent: 30, turns: 3, label: "is poisoned for" }
+// `percent` is the share of each hit that becomes the per-turn tick, `key` lets
+// distinct DOT types (poison vs a Blazing burn) stack, and `label` is the log
+// verb. This is a property of the item itself, wholly separate from enchantments.
+//
 // Active slots: helmet, chestpiece, leg armor, boots, weapon, one accessory,
 // and a bag. A second accessory slot lives in the model but is `locked`, so it
 // stays hidden until it's unlocked later (e.g. via a guild perk). Rendering
@@ -210,6 +217,16 @@ const SHOP_EQUIPMENT = [
     price: 90,
     bonuses: [{ stat: "DEF", value: 4 }],
   },
+  {
+    // A weapon whose bite lingers: every hit poisons the target for 30% of the
+    // damage over 3 turns — an innate DOT, no enchantment required.
+    id: "venomFang",
+    name: "Venom Fang",
+    slot: "weapon",
+    price: 200,
+    bonuses: [{ stat: "ATK", value: 6 }],
+    dot: { key: "poison", percent: 30, turns: 3, label: "is poisoned for" },
+  },
 ];
 
 function shopItemById(id) {
@@ -224,7 +241,7 @@ function isEquipment(item) {
 // copied (so a template is never mutated) and six empty modifier slots are
 // reserved for enchantments.
 function createEquipmentItem(def) {
-  return {
+  const item = {
     type: "equipment",
     equipId: def.id,
     name: def.name,
@@ -233,6 +250,17 @@ function createEquipmentItem(def) {
     modifiers: new Array(EQUIPMENT_MODIFIER_SLOTS).fill(null),
     locked: false,
   };
+  // Innate damage-over-time rides along on the instance so it persists in saves.
+  if (def.dot) item.dot = { ...def.dot };
+  return item;
+}
+
+// Human-readable text for an item's innate DOT, e.g. "Poison — 30% of hit / 3
+// turns". Returns "" for gear with no innate DOT.
+function formatItemDot(dot) {
+  if (!dot) return "";
+  const name = dot.key ? dot.key[0].toUpperCase() + dot.key.slice(1) : "DOT";
+  return `${name} — ${dot.percent}% of hit / ${dot.turns} turns`;
 }
 
 // Human-readable text for one equipment bonus descriptor:
